@@ -8,6 +8,7 @@ import torch
 from dataloader_vit import simpleDataset
 from torch.utils import data
 import copy
+from losses.distillation import pod, dirichlet_BCE, dirichlet_MSE
 #============================== LOSSES ===============================#
 # DONE
 class CrossEntropyOperation(Operation):
@@ -78,8 +79,50 @@ class KnowledgeDistillationOperation(Operation):
         return self.inputs
 
 class PodLossOperation(Operation):
+    def __init__(self, name = "pod_loss", 
+                entry_point ="before_backward",
+                inputs={},
+            callback=(lambda x:x), 
+            paper_ref="https://arxiv.org/pdf/2004.13513.pdf",
+                is_loss=True):
+        super().__init__(name, entry_point, inputs, callback, paper_ref,is_loss)
 
-    pass
+        self.set_callback(self.pod_callback)
+
+
+    def pod_callback(self,reduction="batchmean"):
+        """
+        Cross entropy function
+        """
+        
+        try:
+            assert self.inputs.old_logits is not None
+        except AssertionError :
+            return self.inputs
+        
+
+        
+        # New logits
+        logits=self.inputs.logits
+        attentions=self.inputs.attentions
+
+
+        # Olds logits and attentions
+        old_logits=self.inputs.old_logits
+        old_attentions=self.inputs.old_attentions
+        task_mask=self.inputs.task_mask
+
+        loss=pod([attentions,logits],[old_attentions,old_logits])
+        loss_coeff= sum(self.inputs.seen_classes_mask)/sum(self.inputs.task_mask)
+        
+        if reduction=="none":
+            return loss
+        
+
+        self.inputs.loss+=loss_coeff*loss.mean()
+
+
+        return self.inputs
 
 class ProspectiveLossOperation(Operation):
 
@@ -672,6 +715,8 @@ def return_plugin(name):
         return NCMMemoryUpdaterOperation
     elif name=="mir_memory":
         return MIRMemoryUpdaterOperation
+    elif name=="pod_loss":
+        return PodLossOperation
     
     
 

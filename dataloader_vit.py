@@ -48,7 +48,7 @@ class nouvelOpDataset(torch.utils.data.Dataset):
 
         # Load the sam VIT Network , extract the features dans save them for further use
 
-        sam_checkpoint = "./sam vit/sam_vit_b_01ec64.pth"
+        sam_checkpoint = "./sam_vit/sam_vit_b_01ec64.pth"
         model_type = "vit_b"
 
 

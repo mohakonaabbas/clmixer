@@ -413,6 +413,7 @@ class Trainer:
             return self.storage
 
         # Default behavior
+        # Update the eval logits depending on the plugins behaviour
         self.storage.current_network.eval()
         with torch.no_grad():
             

@@ -3,14 +3,14 @@
     "model_type": "mlp"
   },
   "data": {
-    "dataset_name":"mvtec",
-    "data_path": "/home/facto22019/Desktop/Mohamed/PhD/2023/Acquisition Datasets Internet/mvtec",
+    "dataset_name":"easydataset",
+    "data_path": "/home/facto22019/Desktop/Mohamed/PhD/2023/Acquisition Datasets Internet/createdEasyDataset",
     "n_experiments":5
 
   },
   "optimisation": {
     "lr": 1e-4,
-    "epochs": 250,
+    "epochs": 25,
     "optimizer": {
       "type": "adam",
       "weight_decay": 0.0005
@@ -41,6 +41,11 @@
   },
   "plugins": [
     
+    {
+      "name": "pod_loss",
+      "hyperparameters": {},
+      "function": "knowledge_retention"
+    },
     {
       "name": "cross_entropy",
       "hyperparameters": {},
