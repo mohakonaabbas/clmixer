@@ -78,6 +78,7 @@ class KnowledgeDistillationOperation(Operation):
         self.inputs.loss+=loss_coeff*loss
         return self.inputs
 
+#DONE
 class PodLossOperation(Operation):
     def __init__(self, name = "pod_loss", 
                 entry_point ="before_backward",
@@ -157,7 +158,7 @@ class FinetuneOperation(Operation):
 
         pass
 
-class DuplicateNetworkOperation(Operation):
+class DuplicateNetworkBackboneOperation(Operation):
     """
     Duplicate the neural network
     """

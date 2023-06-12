@@ -241,7 +241,7 @@ def dirichlet_MSE(y_pred:torch.tensor,y:torch.tensor,**kwargs):
     #Compute the sum
     S = torch.sum(alpha, axis=1, keepdim=True) 
     #Compute evidences
-    E = alpha - 1 #evidence : the outputs of the neural network
+    E = alpha - 1 #Evidence : the outputs of the neural network
     #Compute probabilities ; m= p ( in the paper)
     m = alpha / S # belief probabilities
 
