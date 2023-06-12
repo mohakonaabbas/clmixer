@@ -1,0 +1,81 @@
+{
+  "model": {
+    "model_type": "mlp"
+  },
+  "data": {
+    "dataset_name":"easydataset",
+    "data_path": "/home/mohamedphd/Documents/phd/Acquisition Datasets Internet/createdEasyDataset",
+    "n_experiments":7
+
+  },
+  "optimisation": {
+    "lr": 1e-3,
+    "epochs": 1,
+    "optimizer": {
+      "type": "adam",
+      "weight_decay": 0.0005
+    },
+    "batch_size": 16,
+    "device": "cuda"
+  },
+  "human_knowledge": {
+    "nbrs_known_classes": 4,
+    "classes_simmilary": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  "plugins": [
+    
+    {
+      "name": "cross_entropy",
+      "hyperparameters": {},
+      "function": "knowledge_incorporation"
+    },
+    // {
+    //   "name": "knowledge_distillation",
+    //   "hyperparameters": {
+    //     "temperature": 2.0
+    //   },
+    //   "function": "knowledge_retention"
+    // },
+    {
+      "name": "random_memory",
+      "hyperparameters": {
+        "cls_budget": 10
+      },
+      "function": "knowledge_retention"
+    }
+    // {
+    //   "name": "BIC",
+    //   "hyperparameters": {
+    //     "bic_epochs": 50,
+    //     "bic_lr": 0.01,
+    //     "bic_wd": 0.0005,
+    //     "bic_bs": 15,
+    //     "bic_decay": 2.0,
+    //     "cls_budget": 10
+    //   },
+    //   "function": "bias_mitigation"
+    // },
+    // {
+    //   "name": "WA",
+    //   "hyperparameters": {},
+    //   "function": "bias_mitigation"
+    // }
+  ]
+}

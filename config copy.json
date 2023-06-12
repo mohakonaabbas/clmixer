@@ -1,0 +1,57 @@
+{
+  "model": {
+    "model_type": "mlp"
+  },
+  "data": {
+    "dataset_name":"mvtec",
+    "data_path": "/home/facto22019/Desktop/Mohamed/PhD/2023/Acquisition Datasets Internet/mvtec",
+    "n_experiments":5
+
+  },
+  "optimisation": {
+    "lr": 1e-4,
+    "epochs": 250,
+    "optimizer": {
+      "type": "adam",
+      "weight_decay": 0.0005
+    },
+    "batch_size": 32,
+    "device": "cuda"
+  },
+  "human_knowledge": {
+    "nbrs_known_classes": 4,
+    "classes_simmilary": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  "plugins": [
+    
+    {
+      "name": "cross_entropy",
+      "hyperparameters": {},
+      "function": "knowledge_incorporation"
+    },
+    {
+      "name": "random_memory",
+      "hyperparameters": {
+        "cls_budget": 10
+      },
+      "function": "knowledge_retention"
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "model": {
+    "model_type": "mlp"
+  },
+  "data": {
+    "dataset_name":"nouvelop",
+    "data_path": "/home/mohamedphd/Documents/phd/classical/data/images",
+    "n_experiments":5
+
+  },
+  "optimisation": {
+    "lr": 1e-3,
+    "epochs": 200,
+    "optimizer": {
+      "type": "adam",
+      "weight_decay": 0.0005
+    },
+    "batch_size": 2,
+    "device": "cuda"
+  },
+  "human_knowledge": {
+    "nbrs_known_classes": 4,
+    "classes_simmilary": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  "plugins": [
+    {
+      "name": "aligned_init",
+      "hyperparameters": {},
+      "function": "representation_learning"
+    },
+    {
+      "name": "grow_network",
+      "hyperparameters": {},
+      "function": "representation_learning"
+    },
+    {
+      "name": "knowledge_distillation",
+      "hyperparameters": {
+        "temperature": 2
+      },
+      "function": "knowledge_retention"
+    },
+    {
+      "name": "cross_entropy",
+      "hyperparameters": {},
+      "function": "knowledge_incorporation"
+    },
+    {
+      "name": "BIC",
+      "hyperparameters": {},
+      "function": "bias_mitigation"
+    },
+    {
+      "name": "ncm_icarl",
+      "hyperparameters": {},
+      "function": "bias_mitigation"
+    }
+  ]
+}
