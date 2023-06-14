@@ -106,11 +106,24 @@ class ExpandableNet(nn.Module):
         return self.out_dim * len(self.nets)
 
 
-    def freeze(self):
+    def freeze(self,state=True):
         for param in self.parameters():
-            param.requires_grad = False
+            param.requires_grad = not state
         self.eval()
         return self
+
+    
+    def freeze_backbone(self,state=True):
+        """
+        Freeze the backbone
+        """
+
+        for net in self.nets:
+            for param in net.parameters():
+                param.requires_grad=not state
+        
+        return self
+
 
     def copy(self):
         return copy.deepcopy(self)

@@ -57,6 +57,16 @@
         "cls_budget": 10
       },
       "function": "knowledge_retention"
+    },
+    {
+      "name": "finetune_network",
+      "hyperparameters": {
+        "finetune_epochs": 10,
+        "finetune_bs":32,
+        "finetune_lr":1e-3,
+        "cls_budget":15
+      },
+      "function": "bias_mitigation"
     }
   ]
 }

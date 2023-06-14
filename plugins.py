@@ -9,6 +9,7 @@ from dataloader_vit import simpleDataset
 from torch.utils import data
 import copy
 from losses.distillation import pod, dirichlet_BCE, dirichlet_MSE
+from tqdm import tqdm
 #============================== LOSSES ===============================#
 # DONE
 class CrossEntropyOperation(Operation):
@@ -156,7 +157,63 @@ class FinetuneOperation(Operation):
                 paper_ref=""):
         super().__init__(name, entry_point, inputs, callback, paper_ref)
 
-        pass
+        self.set_callback(self.finetune_callback)
+
+    def finetune_callback(self):
+        """
+        Finetune the last layer function
+        """
+
+        #Get the current model
+        network=self.inputs.current_network
+
+        # Freeze the backbone layers
+        network=network.freeze_backbone(state=True)
+        # Create a balanced dataset
+        epochs=self.inputs.plugins_storage[self.name]["hyperparameters"]["finetune_epochs"]
+        bs=self.inputs.plugins_storage[self.name]["hyperparameters"]["finetune_bs"]
+        lr=self.inputs.plugins_storage[self.name]["hyperparameters"]["finetune_lr"]
+        
+        RandomMemoryUpdaterOperation.random_callback(self)
+
+        # Retrain the last layer
+
+            # Assign the memory to the balanced dataset
+
+        loader = data.DataLoader(simpleDataset(X=self.inputs.dataloader.dataset.activated_files_subset_memory,
+                                                        y= self.inputs.dataloader.dataset.activated_files_labels_subset_memory,
+                                                        sam_predictor=self.inputs.dataloader.dataset.sam_predictor),
+                                                        batch_size=bs,
+                                                        shuffle=True)
+        
+        loss_criterion = F.cross_entropy
+        network.train()
+        loss=0.0
+        optimizer = torch.optim.SGD(network.classifier.parameters(), lr=lr, momentum=0.9)
+        for epoch in tqdm(range(epochs)):
+            for inputs,targets in loader:
+                inputs=inputs.to(self.inputs.device)
+                targets=targets.to(self.inputs.device)
+                outputs=network(inputs)
+                loss = loss_criterion(outputs["logits"], targets)
+                # print(f"Finetuning loss :  {loss.item()}")
+                
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+        
+
+
+        # Unfreeze 
+        self.inputs.current_network=network
+       
+        
+        self.inputs.current_network.freeze(state=False)
+        self.inputs.current_network.train()
+        return self.inputs
+
+        
+     
 
 class DuplicateNetworkBackboneOperation(Operation):
     """

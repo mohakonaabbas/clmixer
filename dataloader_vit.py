@@ -374,7 +374,7 @@ class simpleDataset(torch.utils.data.Dataset):
         # x= self.X[idx,:]
         # y=lbl
 
-        y=torch.tensor(lbl,dtype=torch.long)
+        y=torch.tensor(int(lbl),dtype=torch.long)
         return x, y
 
     
