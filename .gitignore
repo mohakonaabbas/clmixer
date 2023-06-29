@@ -224,6 +224,8 @@ docs/source/scripts/quantization_backend_configs/
 
 # Models
 *.pth
+*.pkl
+*.pt
 
 # GDB history
 .gdb_history

@@ -4,6 +4,7 @@ import json
 import factory
 import numpy as np
 from dataloader_vit import *
+from backbones.base import BaseDataset
 from torch.utils import data
 from network import ExpandableNet
 from storage import Storage
@@ -150,9 +151,9 @@ class Trainer:
 
         # model 
         model_type=self.config["model"]["model_type"]
-        self.storage.current_network=ExpandableNet(**{"netType":model_type,"input_dim":self.dataloader.dataset.output_sam_vit[1]**2,
+        self.storage.current_network=ExpandableNet(**{"netType":model_type,"input_dim":self.dataloader.dataset.output_shape,
                                                "hidden_dims":[1],
-                                                "out_dimension":self.dataloader.dataset.output_sam_vit[0],
+                                                "out_dimension":self.config["model"]["hidden_size"],
                                                 "device":torch.device("cuda" if torch.cuda.is_available() else "cpu")})
 
         
@@ -192,27 +193,26 @@ class Trainer:
 
     
     def parse_config_and_initialize_dataloader(self):
-        load_dict={"nouvelop":nouvelOpDataset,
-                   "kth":kth,
-                   'easydataset':eaydataset,
-                   "mvtec":mvtec,
-                   "kaggleTextureSynthetic":kaggleSynthetic,
-                   "MagneticTile":tiles,
-                   "severstal":severstal}
+
         dataset_name=self.config["data"]["dataset_name"]
         data_path=self.config["data"]["data_path"]
         n_experiments=self.config["data"]["n_experiments"]
-        train_dataset=load_dict[dataset_name](data_path,
-                                              rejectedClasses=[],
-                                              n_experiments=n_experiments,
-                                              mode="train",
-                                              device=self.config["optimisation"]["device"])
+        backbone_name=self.config["data"]["backbone"]
         
-        val_dataset=load_dict[dataset_name](data_path,
-                                        rejectedClasses=[],
-                                        n_experiments=n_experiments,
-                                        mode="val",
-                                        device=self.config["optimisation"]["device"])
+        train_dataset=BaseDataset(url=data_path,
+                                name=dataset_name,
+                                backbone_name=backbone_name,
+                                n_splits=n_experiments,
+                                mode="train",
+                                device=self.config["optimisation"]["device"])
+        
+        val_dataset=BaseDataset(url=data_path,
+                                name=dataset_name,
+                                backbone_name=backbone_name,
+                                n_splits=n_experiments,
+                                mode="test",
+                                device=self.config["optimisation"]["device"])
+       
         self.dataloader = data.DataLoader(train_dataset, 
                                     batch_size=self.config["optimisation"]["batch_size"],
                                     shuffle=True,

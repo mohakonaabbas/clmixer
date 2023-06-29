@@ -20,8 +20,10 @@ def get_optimizer(params, optimizer, lr, weight_decay=0.0):
 def get_net(net_type, **kwargs):
     if net_type == "convnet":
         return resnet_rebuffi(**kwargs)
-    elif net_type == "mlp":
+    elif net_type == "mlp_sam":
         return MLP_SAM(**kwargs)
+    elif net_type == "mpl":
+        return MLP(**kwargs)
 
 
 

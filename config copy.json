@@ -1,11 +1,14 @@
 {
   "model": {
-    "model_type": "mlp"
+    "model_type": "mlp",
+    "hidden_size":256
   },
   "data": {
-    "dataset_name":"easydataset",
-    "data_path": "/home/facto22019/Desktop/Mohamed/PhD/2023/Acquisition Datasets Internet/createdEasyDataset",
-    "n_experiments":5
+    "dataset_name":"easy",
+    "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/",
+    "n_experiments":5,
+    "backbone":"dinov2_vits14"
+
 
   },
   "optimisation": {

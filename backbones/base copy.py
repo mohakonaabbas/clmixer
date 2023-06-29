@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import os.path as osp
 import os
-from pathlib import Path
+from copy import deepcopy
 import random
 import warnings
 warnings.filterwarnings("ignore")#, "Corrupt EXIF data", UserWarning)
@@ -72,7 +72,10 @@ class BaseDataset(torch.utils.data.Dataset):
 
         self.default_embedding_location=f"embeddings/{backbone_name}"
 
-        
+        # Manage the folder to keep embeddings
+        if save_embedding:
+            self.generateEmbeddings()
+
         # BACKBONE LOADING 
         # Load the right backbone in eval mode
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -83,11 +86,6 @@ class BaseDataset(torch.utils.data.Dataset):
             self.backbone=BACKBONES["resnet"](backbone_name=self.backbone_name,device=self.device)
         elif "dinov2" in self.backbone_name:
             self.backbone=BACKBONES["dinov2"](backbone_name=self.backbone_name,device=self.device)
-
-        # Manage the folder to keep embeddings
-        if save_embedding:
-            self.generateEmbeddings()
-
 
         # INCREMENTAL LEARNING
         
@@ -103,7 +101,7 @@ class BaseDataset(torch.utils.data.Dataset):
         self.nbrs_known_classes=(self.splits[:,0]>0).sum()
         self.max_classes=len(self.splits[:,0])
         
-        self.output_shape=self.backbone.output_shape
+        self.output_sam_vit=(256,64,64)
 
         # Memory manager
         self.activated_files_subset_memory=[]
@@ -188,7 +186,7 @@ class BaseDataset(torch.utils.data.Dataset):
         self.dataset_image_path = os.path.join(url,"data")
         # Get the labels names : Title of the folder
         self.named_labels=os.listdir(self.dataset_image_path)
-        self.labels=np.arange(len(self.named_labels),dtype=int)
+        self.labels=np.arange(len(self.named_labels),dtype=float)
         # Create an ordered dict mapping int to 
         self.label_dict=dict(zip(self.named_labels,self.labels))
 
@@ -200,8 +198,8 @@ class BaseDataset(torch.utils.data.Dataset):
         # Check if the train and test files already exists
         pre_split=os.path.exists(os.path.join(url,"train.txt"))
         if pre_split: #No : Is there a predefined files in the folder of the data . Named train.txt and test.txt ?
-            train_files=np.loadtxt(os.path.join(url,"train.txt"),dtype="str")
-            test_files=np.loadtxt(os.path.join(url,"test.txt"),dtype="str")
+            train_files=np.loadtxt(os.path.join(url,"train.txt"))
+            test_files=np.loadtxt(os.path.join(url,"test.txt"))
         else:
             self.files,labels=self.crawlDataFolder(self.dataset_image_path,self.rejected_classes)
 
@@ -209,25 +207,23 @@ class BaseDataset(torch.utils.data.Dataset):
             # Is there is a test and train set in the dataset folder ?
             # Yes : Use it . No : Random shuffle the data and do a 80/20 split . Save in files named train and test.txt the split
 
-            default_train_set=list(map(lambda x : "train/" in x.lower(),self.files))
-            train_files=np.array(self.files)[default_train_set]
-            
+            default_train_set=list(map(lambda x : "train/" in x,self.files))
+            train_files=self.files[default_train_set]
             if len(train_files)>0: 
                 # Is there is a test and train set in the dataset folder ?            
-                default_test_set=list(map(lambda x : "train/" not in x.lower(),self.files))
-                test_files=np.array(self.files)[default_test_set]
-                
+                default_test_set=list(map(lambda x : "train/" not in x,self.files))
+                test_files=self.files[default_test_set]
             else:
                 
                 # Use the mode to generate the splits ( )
                 alpha=0.8
                 split_idx=int(alpha*len(self.files))
-                random.shuffle(self.files)
-                train_files=np.array(self.files[:split_idx])
-                test_files=np.array(self.files[split_idx:])
+                files=random.shuffle(self.files)
+                train_files=np.array(files[:split_idx])
+                test_files=np.array(files[split_idx:])
 
-            np.savetxt(os.path.join(url,"train.txt"),train_files,fmt="%s")
-            np.savetxt(os.path.join(url,"test.txt"),test_files,fmt="%s")
+            np.savetxt(os.path.join(url,"train.txt"),train_files)
+            np.savetxt(os.path.join(url,"test.txt"),test_files)
 
         
 
@@ -236,7 +232,7 @@ class BaseDataset(torch.utils.data.Dataset):
         elif mode=="test":
             files=test_files.tolist()
 
-        lbl_getter=lambda x: self.label_dict[x.replace(self.dataset_image_path,"").split('/')[1]]
+        lbl_getter=lambda x: self.label_dict[x.replace(self.dataset_image_path,"").split('/')[0]]
         Y=list(map(lbl_getter,files))
         return files,np.array(Y)
 
@@ -275,10 +271,11 @@ class BaseDataset(torch.utils.data.Dataset):
             else:
                 img=cv2.imread(path)
                 x=self.backbone.predict(img)
-                #Save it in the embedding folder
-                torch.save(x.detach().cpu(),embedding_path)
-        
+
             y=torch.tensor(lbl,dtype=torch.long)
+
+            #Save it in the embedding folder
+            torch.save(embedding_path,x.detach().cpu())
 
         self.current_batch_paths.append(path)
         self.buffer_x[path]=(x,y)
@@ -292,15 +289,23 @@ class BaseDataset(torch.utils.data.Dataset):
         """
         foundFilesPaths=[]
         foundFilesLabels=[]
-        searchedExtension =['*.jpg','*.png','*.bmp','*.jpeg','*.PNG']
-        
-        for pattern in searchedExtension:
-            names=Path(entryDirectory).rglob(pattern)
-            for path in names:
-                fname = str(path)
-                label=fname.replace(entryDirectory,"").split("/")[1]
-                foundFilesLabels.append(label)
-                foundFilesPaths.append(fname)
+        searchedExtension =['jpg','png','bmp','jpeg']
+
+        for root, dir_names, file_names in os.walk(entryDirectory):
+            
+            for f in file_names:
+                rejections=list(map(lambda x: x in root,reject))
+                if any(rejections):
+                    continue
+
+                fname = os.path.join(root, f)
+                _,extension=os.path.splitext(fname)
+
+                if extension.lower() in searchedExtension:
+                    foundFilesPaths.append(fname)
+
+                    label=fname.replace(entryDirectory,"").split("/")[0]
+                    foundFilesLabels.append(label)
 
 
         return foundFilesPaths,foundFilesLabels
@@ -315,20 +320,13 @@ class BaseDataset(torch.utils.data.Dataset):
             embedding_path=path.replace('data',self.default_embedding_location)
             _,extension=os.path.splitext(path)
             embedding_path=embedding_path.replace(extension,".pt")
-
-            if os.path.exists(embedding_path) :
-                # Do not regenerate the same file 
-                continue
-
-
             embedding_path_folder=os.path.dirname(embedding_path)
-            if not os.path.exists(embedding_path_folder) : 
-                os.makedirs(embedding_path_folder)
+            if not os.path.exists(embedding_path_folder) : os.makedirs(embedding_path_folder)
 
             img=cv2.imread(path)
             x=self.backbone.predict(img)
             #Save it in the embedding folder
-            torch.save(x.detach().cpu(),embedding_path)
+            torch.save(embedding_path,x.detach().cpu())
 
 
 class simpleDataset(torch.utils.data.Dataset):
@@ -361,13 +359,13 @@ if __name__=="__main__":
     root_folder_path="/home/mohamedphd/Documents/phd/Datasets/curated/"
 
     datasets_names=os.listdir(root_folder_path)
-    backbones=["dinov2_vits14","resnet18"]
+    backbones=["dinov2_vits14","dinov2_vitb14","resnet18"]
     modes = ["test","train"]
 
     for backbone in backbones:
         for dataset_name in  datasets_names:
             for mode in modes:
-                path=os.path.join(root_folder_path,dataset_name)
+                path=os.path.join(path,dataset_name)
                 print(f" Dataset : {dataset_name}\n Backbone : {backbone}\n mode : {mode} \n------------------------")
 
                 dataset=BaseDataset(url=path,
@@ -379,6 +377,5 @@ if __name__=="__main__":
     
                 for input,lbl in dataset:
                     print(input.shape, lbl)
-                    break
 
 

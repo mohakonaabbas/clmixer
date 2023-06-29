@@ -1,12 +1,9 @@
 import torch
-from torch.utils.data import DataLoader
+
 from torchvision.models import ResNet18_Weights
 import torch.nn as nn
-import json
 
-from segment_anything import sam_model_registry, SamPredictor
-
-from torchvision import transforms,models
+from torchvision import transforms
 from torchvision.transforms.functional import to_pil_image
 from typing import Sequence
 import os
@@ -20,6 +17,9 @@ IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
 DEFAULT_BACKBONES_PATH="./backbones/pretrained/"
 FACEBOOK_REPO="facebookresearch/dinov2"
 PYTORCH_VISION_REPO="pytorch/vision"
+
+DINOV2_OUTPUTS_SHAPE={"dinov2_vits14":384,"dinov2_vitb14":768,"dinov2_vitb14":1024,"dinov2_vitg14":1536}
+RESNET_OUTPUTS_SHAPE={"resnet18":512}
 
 class MaybeToTensor(transforms.ToTensor):
     """
@@ -52,6 +52,25 @@ class MaybeToPIL():
         if isinstance(pic, PIL.Image.Image) or isinstance(pic, torch.Tensor):
             return pic
         return to_pil_image(pic)
+    
+class MaybeAddNewAxis():
+    """
+    Check the size of a tensor. If only 3 dimensions, add one empty  dimension in front
+    """
+
+    def __call__(self, pic):
+        """
+        Args:
+            pic (torch.tensor): Image to be converted.
+        Returns:
+            Tensor: Converted image.
+        """
+        size=pic.size()
+
+        if len(size)==4:
+            return pic
+        
+        return pic[None,:,:,:]
 
 
 def make_normalize_transform(
@@ -74,6 +93,7 @@ def make_classification_eval_transform(
         transforms.CenterCrop(crop_size),
         MaybeToTensor(),
         make_normalize_transform(mean=mean, std=std),
+        MaybeAddNewAxis()
     ]
     return transforms.Compose(transforms_list)
 
@@ -86,6 +106,7 @@ class baseBackbone:
     
     def predict(self,X):
         raise NotImplementedError
+    
 class Dinov2(baseBackbone):
     """
     Load the dinov2 backbone
@@ -99,6 +120,9 @@ class Dinov2(baseBackbone):
         transform : The king of tranform to apply to the data
         """
         local_path=os.path.join(DEFAULT_BACKBONES_PATH,"dinov2",backbone_name)+".pth"
+        self.device=device
+        self.backbone_name=backbone_name
+        self.output_shape=DINOV2_OUTPUTS_SHAPE[backbone_name]
 
         # if os.path.exists(local_path):
         #     self.backbone=torch.load(local_path)
@@ -109,6 +133,7 @@ class Dinov2(baseBackbone):
         except :
             raise Exception('The model type does not exist ! ') 
         self.transformations=make_classification_eval_transform()
+        
         
         
 
@@ -126,7 +151,8 @@ class Dinov2(baseBackbone):
         with torch.no_grad():
             x=self.backbone(x)
         
-        return x
+        
+        return x.squeeze()
     
 
 class Resnet(baseBackbone):
@@ -149,6 +175,8 @@ class Resnet(baseBackbone):
         'resnet50'
         """
         self.device=device
+        self.backbone_name=backbone_name
+        self.output_shape=RESNET_OUTPUTS_SHAPE[backbone_name]
         # if os.path.exists(local_path):
         #     self.backbone=torch.load(local_path)
         # else:

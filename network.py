@@ -71,7 +71,6 @@ class ExpandableNet(nn.Module):
         self.nets = nn.ModuleList()
         self.nets.append(
             factory.get_net(self.netType,**{"input_dim":self.input_dim,
-                 "hidden_dims":self.hidden_dims,
                  "out_dimension":self.out_dimension}))
         self.out_dim = self.nets[0].out_dim
         
@@ -160,7 +159,6 @@ class ExpandableNet(nn.Module):
         if self.ntask > 1:
             new_clf=factory.get_net(self.netType,
                                     **{"input_dim":self.input_dim,
-                                       "hidden_dims":self.hidden_dims,
                                        "out_dimension":self.out_dimension}).to(self.device)
 
             new_clf.load_state_dict(self.nets[-1].state_dict())

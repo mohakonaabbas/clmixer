@@ -182,7 +182,7 @@ class FinetuneOperation(Operation):
 
         loader = data.DataLoader(simpleDataset(X=self.inputs.dataloader.dataset.activated_files_subset_memory,
                                                         y= self.inputs.dataloader.dataset.activated_files_labels_subset_memory,
-                                                        sam_predictor=self.inputs.dataloader.dataset.sam_predictor),
+                                                        predictor=self.inputs.dataloader.dataset.backbone),
                                                         batch_size=bs,
                                                         shuffle=True)
         
@@ -366,7 +366,7 @@ class BICOperation(Operation):
 
             bic_loader = data.DataLoader(simpleDataset(X=self.inputs.dataloader.dataset.activated_files_subset_memory,
                                                             y= self.inputs.dataloader.dataset.activated_files_labels_subset_memory,
-                                                            sam_predictor=self.inputs.dataloader.dataset.sam_predictor),
+                                                            predictor=self.inputs.dataloader.dataset.backbone),
                                                             batch_size=bs,
                                                             shuffle=True)
             
@@ -635,7 +635,7 @@ class MIRMemoryUpdaterOperation(Operation):
 
             memory_dataloader = data.DataLoader(simpleDataset(X=self.inputs.dataloader.dataset.activated_files_subset_memory,
                                                             y= self.inputs.dataloader.dataset.activated_files_labels_subset_memory,
-                                                            sam_predictor=self.inputs.dataloader.dataset.sam_predictor),
+                                                            predictor=self.inputs.dataloader.dataset.backbone),
                                                             batch_size=batch_size_mem,
                                                             shuffle=True)
             
