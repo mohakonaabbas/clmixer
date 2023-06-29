@@ -5,7 +5,7 @@
   },
   "data": {
     "dataset_name":"easy",
-    "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/",
+    "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/mvtec",
     "n_experiments":5,
     "backbone":"dinov2_vits14"
 

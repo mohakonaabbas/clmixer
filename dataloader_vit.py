@@ -7,8 +7,7 @@ from copy import deepcopy
 import random
 import warnings
 warnings.filterwarnings("ignore")#, "Corrupt EXIF data", UserWarning)
-import pymfe
-from pymfe.mfe import MFE
+
 
 import torch
 from torch.utils.data import DataLoader

@@ -3,14 +3,15 @@ from base_plugin import Operation,EntryPoints
 import json
 import factory
 import numpy as np
-from dataloader_vit import *
-from backbones.base import BaseDataset
+# from dataloader_vit import *
+from datasets.base import BaseDataset
 from torch.utils import data
 from network import ExpandableNet
 from storage import Storage
 import copy
 import metrics
 from tqdm import tqdm
+import torch
 
 from torch.utils.tensorboard import SummaryWriter
 class Trainer:
@@ -204,14 +205,14 @@ class Trainer:
                                 backbone_name=backbone_name,
                                 n_splits=n_experiments,
                                 mode="train",
-                                device=self.config["optimisation"]["device"])
+                                save_embedding=True)
         
         val_dataset=BaseDataset(url=data_path,
                                 name=dataset_name,
                                 backbone_name=backbone_name,
                                 n_splits=n_experiments,
                                 mode="test",
-                                device=self.config["optimisation"]["device"])
+                                save_embedding=True)
        
         self.dataloader = data.DataLoader(train_dataset, 
                                     batch_size=self.config["optimisation"]["batch_size"],

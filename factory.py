@@ -22,7 +22,7 @@ def get_net(net_type, **kwargs):
         return resnet_rebuffi(**kwargs)
     elif net_type == "mlp_sam":
         return MLP_SAM(**kwargs)
-    elif net_type == "mpl":
+    elif net_type == "mlp":
         return MLP(**kwargs)
 
 

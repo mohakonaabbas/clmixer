@@ -5,7 +5,7 @@ from imbalance import BiC,WA
 from storage import Storage
 import numpy as np
 import torch
-from dataloader_vit import simpleDataset
+from datasets.base import simpleDataset
 from torch.utils import data
 import copy
 from losses.distillation import pod, dirichlet_BCE, dirichlet_MSE
