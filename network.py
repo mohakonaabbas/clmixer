@@ -144,10 +144,9 @@ class ExpandableNet(nn.Module):
         """
         
         n_classes=len(current_task_classes)
+        # if (self.classifier is None) or ((old_task_classes is not None) and (n_classes>len(old_task_classes)))  :
         self.ntask += 1
         self._add_classes_multi_fc(current_task_classes, old_task_classes)
-
-
         self.n_classes = n_classes
 
     def _add_classes_multi_fc(self, current_task_classes, old_task_classes):

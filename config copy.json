@@ -4,8 +4,8 @@
     "hidden_size":16
   },
   "data": {
-    "dataset_name":"mvtec",
-    "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/mvtec",
+    "dataset_name":"kth",
+    "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/kth",
     "n_experiments":10,
     "backbone":"dinov2_vits14"
 
