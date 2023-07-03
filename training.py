@@ -113,7 +113,9 @@ class Trainer:
         accuracies=metrics.Accuracy().compute(self.storage.confusion_matrix[type])
         accuracy=accuracies[list(accuracies.keys())[-1]]
         accuracy=accuracy.tolist()
-        plot=dict(map(lambda x : ("Class"+str(accuracy.index(x)),x),accuracy))
+        cls_name=np.arange(len(accuracy))
+        cls_name=list(map(str,cls_name))
+        plot=dict(zip(cls_name,accuracy))
 
         self.writer.add_scalars("eval/acc_i",plot,exp)
         self.after_eval(self.plugins)

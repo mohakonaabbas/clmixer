@@ -1,24 +1,24 @@
 {
   "model": {
     "model_type": "mlp",
-    "hidden_size":256
+    "hidden_size":16
   },
   "data": {
-    "dataset_name":"easy",
+    "dataset_name":"mvtec",
     "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/mvtec",
-    "n_experiments":5,
+    "n_experiments":10,
     "backbone":"dinov2_vits14"
 
 
   },
   "optimisation": {
     "lr": 1e-4,
-    "epochs": 25,
+    "epochs": 1000,
     "optimizer": {
       "type": "adam",
       "weight_decay": 0.0005
     },
-    "batch_size": 32,
+    "batch_size": 64,
     "device": "cuda"
   },
   "human_knowledge": {
@@ -45,12 +45,19 @@
   "plugins": [
     
     {
-      "name": "pod_loss",
-      "hyperparameters": {},
+      "name": "knowledge_distillation",
+      "hyperparameters": {
+        "temperature": 2
+      },
       "function": "knowledge_retention"
     },
     {
       "name": "cross_entropy",
+      "hyperparameters": {},
+      "function": "knowledge_incorporation"
+    },
+    {
+      "name": "pod_loss",
       "hyperparameters": {},
       "function": "knowledge_incorporation"
     },
@@ -60,16 +67,6 @@
         "cls_budget": 10
       },
       "function": "knowledge_retention"
-    },
-    {
-      "name": "finetune_network",
-      "hyperparameters": {
-        "finetune_epochs": 10,
-        "finetune_bs":32,
-        "finetune_lr":1e-3,
-        "cls_budget":15
-      },
-      "function": "bias_mitigation"
     }
   ]
 }

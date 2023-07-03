@@ -69,6 +69,7 @@ class ExpandableNet(nn.Module):
 
         print("Enable dynamical reprensetation expansion!")
         self.nets = nn.ModuleList()
+        
         self.nets.append(
             factory.get_net(self.netType,**{"input_dim":self.input_dim,
                  "out_dimension":self.out_dimension}))
@@ -112,16 +113,25 @@ class ExpandableNet(nn.Module):
         return self
 
     
-    def freeze_backbone(self,state=True):
+    def freeze_backbone(self,state=True,nets_trainables=[]):
         """
         Freeze the backbone
+        Revert the backbone state during defreeze
         """
-
+        count=0
         for net in self.nets:
-            for param in net.parameters():
-                param.requires_grad=not state
+            if state == True:
+                nets_trainables.append(next(net.parameters()).requires_grad) # Save the previous states of backbones
+                for param in net.parameters():
+                    param.requires_grad=False
+            else:
+                # Unfreeze the network depending on previous state
+                for param in net.parameters():
+                    param.requires_grad=nets_trainables[count]
+            count+=1
         
-        return self
+            
+        return self,nets_trainables
 
 
     def copy(self):
@@ -156,7 +166,7 @@ class ExpandableNet(nn.Module):
         self.classifier = fc
 
     def _add_classes_multi_backbone(self):
-        if self.ntask > 1:
+        if self.ntask >= 1:
             new_clf=factory.get_net(self.netType,
                                     **{"input_dim":self.input_dim,
                                        "out_dimension":self.out_dimension}).to(self.device)

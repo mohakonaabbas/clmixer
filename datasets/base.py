@@ -135,9 +135,11 @@ class BaseDataset(torch.utils.data.Dataset):
 
         # self.n_splits=n_splits
         splits=np.random.rand(self.counts.shape[0],self.n_splits)
+        mask= np.random.choice([True,False],size=splits.shape)
         splits=splits/np.sum(splits,axis=1).reshape(-1,1)
         splits=splits*self.counts.reshape(-1,1)
-        self.splits=splits.astype(np.int16)
+        self.splits=mask*splits.astype(np.int16)+np.roll(~mask*splits.astype(np.int16),1,axis=1)
+        
         print(self.splits)
 
         labels=np.unique(self.Y)
@@ -344,9 +346,34 @@ class simpleDataset(torch.utils.data.Dataset):
     
     def __getitem__(self, idx):
 
-        img=cv2.imread(self.X[idx])
+        """
+        1- Try to Use the buffer value if availabale
+        2- Try to use the already saved embeddings if available
+        3- Load the image file and use it with backbone
 
-        x=self.predictor.predict(img)
+        """
+        path=self.X[idx]
+        default_embedding_location=f"embeddings/{self.predictor.backbone_name}"
+
+        # Manage the folder to keep embeddings
+        embedding_path=path.replace('data',default_embedding_location)
+        _,extension=os.path.splitext(path)
+        embedding_path=embedding_path.replace(extension,".pt")
+        
+        # Try to load the embeddings
+        if os.path.exists(embedding_path):
+            x=torch.load(embedding_path)
+            
+            
+        else:
+            img=cv2.imread(path)
+            x=self.predictor.predict(img)
+            #Save it in the embedding folder
+            torch.save(x.detach().cpu(),embedding_path)
+        
+            # y=torch.tensor(lbl,dtype=torch.long)
+
+
 
         lbl=self.y[idx] 
 

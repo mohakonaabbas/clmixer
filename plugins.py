@@ -65,12 +65,12 @@ class KnowledgeDistillationOperation(Operation):
         
         temperature=self.inputs.plugins_storage[self.name]["hyperparameters"]["temperature"]
         old_logits=self.inputs.old_logits
-        task_mask=self.inputs.task_mask
+        task_mask=self.inputs.seen_classes_mask
 
         log_probs_new = (logits[:, task_mask] / temperature).log_softmax(dim=1)
 
         probs_old = (old_logits / temperature).softmax(dim=1)
-        loss = F.kl_div(log_probs_new, probs_old, reduction=reduction)
+        loss = F.kl_div(log_probs_new, probs_old[:, task_mask], reduction=reduction)
 
         loss_coeff= sum(self.inputs.seen_classes_mask)/sum(self.inputs.task_mask)
         # loss_coeff= 1.0
@@ -168,7 +168,7 @@ class FinetuneOperation(Operation):
         network=self.inputs.current_network
 
         # Freeze the backbone layers
-        network=network.freeze_backbone(state=True)
+        network,nets_trainables=network.freeze_backbone(state=True,nets_trainables=[])
         # Create a balanced dataset
         epochs=self.inputs.plugins_storage[self.name]["hyperparameters"]["finetune_epochs"]
         bs=self.inputs.plugins_storage[self.name]["hyperparameters"]["finetune_bs"]
@@ -208,7 +208,8 @@ class FinetuneOperation(Operation):
         self.inputs.current_network=network
        
         
-        self.inputs.current_network.freeze(state=False)
+        self.inputs.current_network.freeze_backbone(state=False,nets_trainables=nets_trainables)
+
         self.inputs.current_network.train()
         return self.inputs
 
@@ -232,20 +233,23 @@ class DuplicateNetworkBackboneOperation(Operation):
         """
         duplicate function
         """
-        network=self.inputs["network"]
-        n_classes=self.inputs["n_classes"]
-        network._add_classes_multi_fc(n_classes)
+
         
-        # temperature=self.inputs["temperature"]
-        # old_logits=self.inputs["old_logits"]
-        # task_size=self.inputs["task_size"]
+        # Get the current model
+        network=self.inputs.current_network
+        # Only upgrade the model if we have more than one class
+        if network.ntask == 0:
+            return self.inputs
+        # Freeze the backbone layers
+        network,_=network.freeze_backbone(state=True,nets_trainables=[])
 
-        # log_probs_new = (logits[:, :-task_size] / temperature).log_softmax(dim=1)
+        # Duplicate the network
+        network._add_classes_multi_backbone()
+        self.inputs.current_network=network
 
-        # probs_old = (old_logits / temperature).softmax(dim=1)
-        # loss = F.kl_div(log_probs_new, probs_old, reduction="batchmean")
-        return {"network":network}
 
+        return self.inputs
+    
 class GrowNewOutputsOperation(Operation):
     """
     Grow a new output when needed
@@ -760,7 +764,7 @@ def return_plugin(name):
     elif name=="grow_network":
         return GrowNewOutputsOperation
     elif name=="duplicate_network":
-        return DuplicateNetworkOperation
+        return DuplicateNetworkBackboneOperation
     elif name=="finetune_network":
         return FinetuneOperation
     elif name=="knowledge_distillation":

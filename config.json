@@ -10,12 +10,12 @@
   },
   "optimisation": {
     "lr": 1e-3,
-    "epochs": 200,
+    "epochs": 1000,
     "optimizer": {
       "type": "adam",
       "weight_decay": 0.0005
     },
-    "batch_size": 2,
+    "batch_size": 32,
     "device": "cuda"
   },
   "human_knowledge": {
@@ -58,6 +58,16 @@
       "function": "knowledge_retention"
     },
     {
+      "name": "finetune_network",
+      "hyperparameters": {
+        "finetune_epochs": 10,
+        "finetune_bs":32,
+        "finetune_lr":1e-3,
+        "cls_budget":15
+      },
+      "function": "bias_mitigation"
+    },
+    {
       "name": "cross_entropy",
       "hyperparameters": {},
       "function": "knowledge_incorporation"
@@ -71,6 +81,11 @@
       "name": "ncm_icarl",
       "hyperparameters": {},
       "function": "bias_mitigation"
+    },
+    {
+      "name": "duplicate_network",
+      "hyperparameters": {},
+      "function": "representation_learning"
     }
   ]
 }
