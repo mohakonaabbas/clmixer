@@ -80,7 +80,9 @@ class Trainer:
             # Flush the buffer
             self.storage.dataloader.dataset.buffer_x={}
             #self.eval('train',self.storage.dataloader,exp) # On train data
+            print("Start Evaluation >>>")
             self.eval('val',self.val_dataloader,exp) # On val data
+            print("End Evaluation <<<")
             
         
         self.after_training(self.plugins)
@@ -114,10 +116,10 @@ class Trainer:
         accuracy=accuracies[list(accuracies.keys())[-1]]
         accuracy=accuracy.tolist()
         cls_name=np.arange(len(accuracy))
-        cls_name=list(map(str,cls_name))
+        cls_name=list(map(lambda x : str(x)+"_cls_"+self.storage.dataloader.dataset.label_dict_inverted[x],cls_name))
         plot=dict(zip(cls_name,accuracy))
 
-        self.writer.add_scalars("eval/acc_i",plot,exp)
+        self.writer.add_scalars("eval/acc_i/",plot,exp)
         self.after_eval(self.plugins)
         self.taskMetric.reset()
 

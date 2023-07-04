@@ -80,6 +80,7 @@ class Accuracy(OperationMetric):
     """
     Finetune the last layer of a neural network
     """
+    EPSILON=10**-12
     def __init__(self, name='accuracy' ,scope='any' ):
         super().__init__(name, scope)
 
@@ -93,7 +94,8 @@ class Accuracy(OperationMetric):
         result={}
 
         for key, value in cm_inputs.items():
-            result[key]= np.diagonal(value)/np.sum(value,axis=1)
+            result[key]= np.diagonal(value)/(np.sum(value,axis=1)+self.EPSILON)
+                                             
 
         return result
 

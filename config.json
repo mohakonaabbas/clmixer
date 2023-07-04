@@ -68,6 +68,14 @@
       "function": "bias_mitigation"
     },
     {
+      "name": "dirichlet_uncertainty_loss",
+      "hyperparameters": {
+        "kl_annealing_step": 150,
+        "regressor":"mse"
+      },
+      "function": "bias_mitigation"
+    },
+    {
       "name": "cross_entropy",
       "hyperparameters": {},
       "function": "knowledge_incorporation"

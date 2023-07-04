@@ -59,6 +59,7 @@ class BaseDataset(torch.utils.data.Dataset):
         self.random_seed=31101994
         np.random.seed(self.random_seed)
         random.seed(self.random_seed)
+        torch.random.manual_seed(self.random_seed)
 
         # FILES
         # Load the files in the root folder
@@ -116,12 +117,17 @@ class BaseDataset(torch.utils.data.Dataset):
 
     def step(self):
         self.current_experiment+=1
-        self.activated_files_subset=self.datasets[self.current_experiment]
-        self.activated_files_labels_subset=self.datasets_labels[self.current_experiment]
+        # We have a different behaviour based onn the mode we are in
+        if self.mode == "test":
+            self.activated_files_subset=self.files
+            self.activated_files_labels_subset=self.Y
+        else:
+            self.activated_files_subset=self.datasets[self.current_experiment]
+            self.activated_files_labels_subset=self.datasets_labels[self.current_experiment]
 
-        # Add memory
-        self.activated_files_subset+=self.activated_files_subset_memory
-        self.activated_files_labels_subset+=self.activated_files_labels_subset_memory
+            # Add memory
+            self.activated_files_subset+=self.activated_files_subset_memory
+            self.activated_files_labels_subset+=self.activated_files_labels_subset_memory
 
     def splitDataset(self):
         """
@@ -193,6 +199,7 @@ class BaseDataset(torch.utils.data.Dataset):
         self.labels=np.arange(len(self.named_labels),dtype=int)
         # Create an ordered dict mapping int to 
         self.label_dict=dict(zip(self.named_labels,self.labels))
+        self.label_dict_inverted=dict(zip(self.labels,self.named_labels))
 
         self.rejected_classes=rejectedClasses
         
@@ -278,6 +285,7 @@ class BaseDataset(torch.utils.data.Dataset):
                 img=cv2.imread(path)
                 x=self.backbone.predict(img)
                 #Save it in the embedding folder
+                lbl=self.Y[self.files.index(path)]
                 torch.save(x.detach().cpu(),embedding_path)
         
             y=torch.tensor(lbl,dtype=torch.long)

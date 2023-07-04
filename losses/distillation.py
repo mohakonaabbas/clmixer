@@ -106,6 +106,53 @@ def pod(
 
     return loss / len(list_attentions_a)
 
+def dirichlet_uncertain(y_pred:torch.tensor,
+                  y:torch.tensor,
+                  epoch:int,
+                  kl_annealing_step: int,
+                  type : str = "mse"):
+
+    
+    def bce(S,alpha,m,y):
+        #Compute the lef side of equation
+        A = torch.digamma(S) - torch.digamma(alpha)
+        B = torch.sum(y*A, axis=1, keepdim=True) #Fist side of eq : 3 : Classification part
+        return A,B
+    
+    def mse(S,alpha,m,y):
+        A = torch.sum((y-m)**2, axis=1, keepdim=True) #Fist side of eq : 3 : Classification part
+
+        B = torch.sum(alpha*(S-alpha)/(S*S*(S+1)), axis=1, keepdim=True) #Variance part
+        return A,B
+    
+    # Get the shape of the output
+    max_hot=y_pred.shape[-1]
+    #Convert to one hot vector
+    y=torch.nn.functional.one_hot(y,max_hot)
+    #Compute the dirichlet parameters
+    alpha=y_pred+1
+    #Compute the sum
+    S = torch.sum(alpha, axis=1, keepdim=True) 
+    #Compute evidences
+    E = alpha - 1 #Evidence : the outputs of the neural network
+    #Compute probabilities ; m= p ( in the paper)
+    m = alpha / S # belief probabilities
+
+    A,B={'mse':mse,"bce":bce}[type](S,alpha,m,y)
+
+
+    #Compute the annealing coeff to give increasing importance to KL divergence
+    annealing_coef = torch.tensor(min(1.0,epoch/kl_annealing_step))
+    annealing_coef=annealing_coef.to(A.device)
+    
+    #alpha_tilde=evidence*(1-y)+1
+    alp = E*(1-y) + 1 
+    C =  annealing_coef * dirichlet_KLDivergence_loss(alp)
+
+    loss=A+B+C
+    return loss
+    
+    
 
 def dirichlet_BCE(y_pred:torch.tensor,y:torch.tensor,**kwargs):
     """
@@ -184,58 +231,23 @@ def dirichlet_BCE(y_pred:torch.tensor,y:torch.tensor,**kwargs):
 
     return loss
 
-
-
-def dirichlet_MSE(y_pred:torch.tensor,y:torch.tensor,**kwargs):
+def dirichlet_MSE(y_pred:torch.tensor,
+                  y:torch.tensor,
+                  epoch:int,
+                  kl_annealing_step: int):
     """
     This loss function compute the MSE error according to 
 
     https://arxiv.org/pdf/1806.01768.pdf
     https://colab.research.google.com/github/muratsensoy/muratsensoy.github.io/blob/master/uncertainty.ipynb#scrollTo=g9Zb_A8AKOLa
     
-    
-    def mse_loss(p, alpha, global_step, annealing_step): 
-        S = tf.reduce_sum(alpha, axis=1, keep_dims=True) 
-        E = alpha - 1
-        m = alpha / S
-        
-        A = tf.reduce_sum((p-m)**2, axis=1, keep_dims=True) 
-        B = tf.reduce_sum(alpha*(S-alpha)/(S*S*(S+1)), axis=1, keep_dims=True) 
-        
-        annealing_coef = tf.minimum(1.0,tf.cast(global_step/annealing_step,tf.float32))
-        
-        alp = E*(1-p) + 1 
-        C =  annealing_coef * KL(alp)
-        return (A + B) + C
-
-    
-    y: a NON hot vector . This function converts it to the hot vector
         
     """
     #alpha=e+1
+    # Get the shape of the output
+    max_hot=y_pred.shape[-1]
     #Convert to one hot vector
-    epoch=kwargs["epoch"]
-    kl_annealing_step=kwargs["kl_annealing_step"]
-    max_hot=kwargs["max_class_id"]
-    if not kwargs["raw"]:
-        y=torch.nn.functional.one_hot(y,max_hot)
-    else:
-        
-        
-            # Compute the argmax
-        
-        # loss=differentiable_argmax(y_pred,y,cut=0.99,cut_val=0.001)
-        # return loss
-        
-        #Put y in prob form
-        #Compute the dirichlet parameters
-        alphay=y+1
-        #Compute the sum
-        Sy = torch.sum(alphay, axis=1, keepdim=True) 
-        #Compute probabilities ; m= p ( in the paper)
-        y = alphay / Sy# belief probabilities
-        
-
+    y=torch.nn.functional.one_hot(y,max_hot)
     #Compute the dirichlet parameters
     alpha=y_pred+1
     #Compute the sum
@@ -244,34 +256,24 @@ def dirichlet_MSE(y_pred:torch.tensor,y:torch.tensor,**kwargs):
     E = alpha - 1 #Evidence : the outputs of the neural network
     #Compute probabilities ; m= p ( in the paper)
     m = alpha / S # belief probabilities
-
-
-    if kwargs["raw"]:
-        #https://neuralnet-pytorch.readthedocs.io/en/latest/manual/metrics.html
-        kl_loss = torch.nn.KLDivLoss(reduction="none")
-        loss=0.5*(kl_loss(torch.log(m),y) + kl_loss(torch.log(y),m)) #jensen - shannon
-        return loss
     
     A = torch.sum((y-m)**2, axis=1, keepdim=True) #Fist side of eq : 3 : Classification part
 
     B = torch.sum(alpha*(S-alpha)/(S*S*(S+1)), axis=1, keepdim=True) #Variance part
+    
     #Compute the annealing coeff to give increasing importance to KL divergence
     annealing_coef = torch.tensor(min(1.0,epoch/kl_annealing_step))
     annealing_coef=annealing_coef.to(A.device)
+    
     #alpha_tilde=evidence*(1-y)+1
     alp = E*(1-y) + 1 
     C =  annealing_coef * dirichlet_KLDivergence_loss(alp)
 
-    if True:
-        pure_mse_loss=torch.mean(A)
-        variance_mse_loss=torch.mean(B)
-        kl_loss=torch.mean(C)
+    # pure_mse_loss=torch.mean(A)
+    # variance_mse_loss=torch.mean(B)
+    # kl_loss=torch.mean(C)
 
-    # print("\nPure MSE loss {p} - Variance Dirichlet {v} - KL Divergence {kl}".format(p=pure_mse_loss.item(),v=variance_mse_loss.item(),kl=kl_loss.item()))
-
-
-
-    loss=torch.mean(A+B+C)
+    loss=A+B+C
 
     return loss
     

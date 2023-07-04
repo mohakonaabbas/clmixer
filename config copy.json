@@ -4,46 +4,36 @@
     "hidden_size":16
   },
   "data": {
-    "dataset_name":"kth",
-    "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/kth",
+    "dataset_name":"nouvel_op",
+    "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/nouvel_op",
     "n_experiments":10,
     "backbone":"dinov2_vits14"
 
 
   },
   "optimisation": {
-    "lr": 1e-4,
+    "lr": 1e-3,
     "epochs": 1000,
     "optimizer": {
       "type": "adam",
       "weight_decay": 0.0005
     },
-    "batch_size": 64,
+    "batch_size": 256,
     "device": "cuda"
   },
   "human_knowledge": {
     "nbrs_known_classes": 4,
-    "classes_simmilary": [
-      1,
-      1,
-      1,
-      1,
-      1,
-      1,
-      1,
-      1,
-      1,
-      1,
-      1,
-      1,
-      1,
-      1,
-      1,
-      1
-    ]
+    "classes_simmilary": []
   },
   "plugins": [
-    
+    {
+      "name": "dirichlet_uncertainty_loss",
+      "hyperparameters": {
+        "kl_annealing_step": 150,
+        "regressor":"bce"
+      },
+      "function": "bias_mitigation"
+    },
     {
       "name": "knowledge_distillation",
       "hyperparameters": {
@@ -52,14 +42,9 @@
       "function": "knowledge_retention"
     },
     {
-      "name": "cross_entropy",
+      "name": "duplicate_network",
       "hyperparameters": {},
-      "function": "knowledge_incorporation"
-    },
-    {
-      "name": "pod_loss",
-      "hyperparameters": {},
-      "function": "knowledge_incorporation"
+      "function": "representation_learning"
     },
     {
       "name": "random_memory",
