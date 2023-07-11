@@ -4,21 +4,22 @@
     "hidden_size":16
   },
   "data": {
-    "dataset_name":"nouvel_op",
-    "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/nouvel_op",
+    "dataset_name":"mvtec",
+    "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/mvtec",
     "n_experiments":10,
-    "backbone":"dinov2_vits14"
+    "backbone":"dinov2_vits14",
+    "scenario":"indus_cil"
 
 
   },
   "optimisation": {
     "lr": 1e-3,
-    "epochs": 1000,
+    "epochs": 100,
     "optimizer": {
       "type": "adam",
       "weight_decay": 0.0005
     },
-    "batch_size": 256,
+    "batch_size": 32,
     "device": "cuda"
   },
   "human_knowledge": {
@@ -29,7 +30,7 @@
     {
       "name": "dirichlet_uncertainty_loss",
       "hyperparameters": {
-        "kl_annealing_step": 150,
+        "kl_annealing_step": 75,
         "regressor":"bce"
       },
       "function": "bias_mitigation"
@@ -40,6 +41,11 @@
         "temperature": 2
       },
       "function": "knowledge_retention"
+    },
+    {
+      "name": "cross_entropy",
+      "hyperparameters": {},
+      "function": "knowledge_incorporation"
     },
     {
       "name": "duplicate_network",

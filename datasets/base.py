@@ -42,7 +42,8 @@ class BaseDataset(torch.utils.data.Dataset):
                  backbone_name : str,
                  mode : str,
                  save_embedding : bool,
-                 n_splits : int):
+                 n_splits : int,
+                 split_mode : str = "cil"):
         
         """
         url :the url of the dataset
@@ -56,10 +57,10 @@ class BaseDataset(torch.utils.data.Dataset):
         """
         # random seeder
 
-        self.random_seed=31101994
-        np.random.seed(self.random_seed)
-        random.seed(self.random_seed)
-        torch.random.manual_seed(self.random_seed)
+        # self.random_seed=31101994
+        # np.random.seed(self.random_seed)
+        # random.seed(self.random_seed)
+        # torch.random.manual_seed(self.random_seed)
 
         # FILES
         # Load the files in the root folder
@@ -91,6 +92,7 @@ class BaseDataset(torch.utils.data.Dataset):
 
 
         # INCREMENTAL LEARNING
+        self.split_mode=split_mode
         
         self.current_experiment=-1 # Before the beginning of the training procedure
         self.counts=np.unique(self.Y,return_counts=True)[1] # list(map(lambda x: len(os.listdir(os.path.join(url,x))),self.named_labels))
@@ -132,6 +134,7 @@ class BaseDataset(torch.utils.data.Dataset):
     def splitDataset(self):
         """
         Split dataset according randomly to simulate an industrial continuous process
+        how: cil, indus, indus_cil
         """
         # Create the splits matrix
         # n1 | n2 | ... |nn
@@ -139,12 +142,43 @@ class BaseDataset(torch.utils.data.Dataset):
         # f1 | f2 | ... |fn
         #  Lines sum to counts
 
-        # self.n_splits=n_splits
+        # def batch(iterable, n=1):
+        #     l = len(iterable)
+        #     for ndx in range(0, l, n):
+        #         yield iterable[ndx:min(ndx + n, l)]
+
+        
         splits=np.random.rand(self.counts.shape[0],self.n_splits)
-        mask= np.random.choice([True,False],size=splits.shape)
-        splits=splits/np.sum(splits,axis=1).reshape(-1,1)
-        splits=splits*self.counts.reshape(-1,1)
-        self.splits=mask*splits.astype(np.int16)+np.roll(~mask*splits.astype(np.int16),1,axis=1)
+        N_label=self.counts.shape[0]
+        # n_chunks=N_label//self.n_splits
+
+        if self.split_mode == "cil":
+            # CIL mode generation
+            splits=np.zeros((N_label,self.n_splits),dtype=int)
+
+            non_occupied_columns=np.arange(self.n_splits).tolist()
+
+            for i in range(N_label):
+                if sum(splits[i,:])==0:
+                    if len(non_occupied_columns)>0:
+                        k=np.random.choice(non_occupied_columns)
+                        splits[i,k]=1
+                        non_occupied_columns.remove(k)
+                    else:
+                        j=np.random.choice(self.n_splits)
+                        splits[i,j]=1
+
+                    
+        elif self.split_mode == "indus":
+            # Pure idustrial mode
+            splits=splits/np.sum(splits,axis=1).reshape(-1,1)
+
+        elif self.split_mode == "indus_cil":
+            mask= np.random.choice([True,False],size=splits.shape)
+            splits=mask*splits+np.roll(~mask*splits,1,axis=1)
+
+        self.splits=splits*self.counts.reshape(-1,1)
+        self.splits = self.splits.astype(np.int16)
         
         print(self.splits)
 

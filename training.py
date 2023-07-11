@@ -12,8 +12,21 @@ import copy
 import metrics
 from tqdm import tqdm
 import torch
-
 from torch.utils.tensorboard import SummaryWriter
+import os.path as osp
+import sys
+repo_name = 'clmixer'
+base_dir = osp.realpath(".")[:osp.realpath(".").index(repo_name) + len(repo_name)]
+sys.path.insert(0, base_dir)
+
+from sacred import Experiment
+ex=Experiment(base_dir=base_dir)
+
+# MongoDB Observer
+from sacred.observers import MongoObserver
+ex.observers.append(MongoObserver.create(url='127.0.0.1:27017', db_name='classil'))
+
+
 class Trainer:
     """
     This class aim at implementings the training of CL algorith in a modular way.
@@ -203,25 +216,28 @@ class Trainer:
         data_path=self.config["data"]["data_path"]
         n_experiments=self.config["data"]["n_experiments"]
         backbone_name=self.config["data"]["backbone"]
+        split_mode=self.config["data"]["scenario"]
         
         train_dataset=BaseDataset(url=data_path,
                                 name=dataset_name,
                                 backbone_name=backbone_name,
                                 n_splits=n_experiments,
                                 mode="train",
-                                save_embedding=True)
+                                save_embedding=True,
+                                split_mode=split_mode)
         
         val_dataset=BaseDataset(url=data_path,
                                 name=dataset_name,
                                 backbone_name=backbone_name,
                                 n_splits=n_experiments,
                                 mode="test",
-                                save_embedding=True)
+                                save_embedding=True,
+                                split_mode=split_mode)
        
         self.dataloader = data.DataLoader(train_dataset, 
                                     batch_size=self.config["optimisation"]["batch_size"],
                                     shuffle=True,
-                                    drop_last=False)
+                                    drop_last=True)
         
         self.val_dataloader = data.DataLoader(val_dataset, 
                                     batch_size=self.config["optimisation"]["batch_size"],
@@ -507,9 +523,16 @@ class Trainer:
         self.storage.stage_name=stage_name
 
         return self.storage
+
+@ex.automain
+def main(_run):
+    trainer=Trainer(_run.config["config_path"])
+    trainer.train()
+
+
     
 
 if __name__=="__main__":
-    config_path="config copy.json"
-    trainer=Trainer(config_path)
-    trainer.train()
+    config_path="./config copy.json"
+    ex.add_config(config_path)
+    ex.run_commandline()
