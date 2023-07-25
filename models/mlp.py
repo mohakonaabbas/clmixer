@@ -3,12 +3,16 @@ import torch
 
 class MLP(nn.Module):
 
-    def __init__(self, input_dim=4096,
-                 out_dimension=256,
-                 input_dropout=0.1):
+    def __init__(self, 
+                 name : str = "mlp",
+                 input_dim : int =4096,
+                 out_dimension : int =256,
+                 input_dropout : int =0.1):
         super().__init__()
 
         self.out_dim=out_dimension
+        if "out_dim" is None : 
+            raise Exception("output dimension should be  set")
 
        
 

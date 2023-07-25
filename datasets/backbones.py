@@ -18,7 +18,7 @@ DEFAULT_BACKBONES_PATH="./backbones/pretrained/"
 FACEBOOK_REPO="facebookresearch/dinov2"
 PYTORCH_VISION_REPO="pytorch/vision"
 
-DINOV2_OUTPUTS_SHAPE={"dinov2_vits14":384,"dinov2_vitb14":768,"dinov2_vitb14":1024,"dinov2_vitg14":1536}
+DINOV2_OUTPUTS_SHAPE={"dinov2_vits14":384,"dinov2_vitb14":768,"dinov2_vitl14":1024,"dinov2_vitg14":1536}
 RESNET_OUTPUTS_SHAPE={"resnet18":512}
 BASE_OUTPUTS_SHAPE={'None':(224,244,3)}
 
@@ -162,7 +162,7 @@ class Dinov2(baseBackbone):
 
 class Resnet(baseBackbone):
     def __init__(self,
-                 backbone_name : str ="dinov2_vits14",
+                 backbone_name : str ="resnet18",
                  device="cpu"
                  ):
         """
@@ -194,7 +194,7 @@ class Resnet(baseBackbone):
         self.backbone.fc=Identity()
 
 
-        transformations=[MaybeToPIL(), ResNet18_Weights.DEFAULT.transforms()]
+        transformations=[MaybeToPIL(), ResNet18_Weights.DEFAULT.transforms(),MaybeAddNewAxis()]
         self.transformations=transforms.Compose(transformations)
 
 

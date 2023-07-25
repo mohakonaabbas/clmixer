@@ -6,7 +6,7 @@ import numpy as np
 # from dataloader_vit import *
 from datasets.base import BaseDataset
 from torch.utils import data
-from network import ExpandableNet
+from models import ExpandableNet
 from storage import Storage
 import copy
 import metrics
@@ -543,6 +543,6 @@ def main(_run):
     
 
 if __name__=="__main__":
-    config_path="./config copy.json"
+    config_path="./config copy 3.json"
     ex.add_config(config_path)
     ex.run_commandline()

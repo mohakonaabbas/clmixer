@@ -17,8 +17,8 @@ from tqdm import tqdm
 import functools
 import PIL
 from typing import List,Union
-from backbones import Dinov2,Resnet, baseBackbone
-# from .backbones import Dinov2,Resnet, baseBackbone
+# from backbones import Dinov2,Resnet, baseBackbone
+from .backbones import Dinov2,Resnet, baseBackbone
 
 BACKBONES={'dinov2':Dinov2,'resnet':Resnet,'None':baseBackbone}
 
@@ -348,6 +348,7 @@ class BaseDataset(torch.utils.data.Dataset):
                     img=cv2.imread(path,0)
                 assert img is not None
                 x=self.backbone.predict(img)
+                
                 #Save it in the embedding folder
                 lbl=self.Y[self.files.index(path)]
                 torch.save(x.detach().cpu(),embedding_path)
@@ -355,6 +356,7 @@ class BaseDataset(torch.utils.data.Dataset):
             y=torch.tensor(lbl,dtype=torch.long)
 
         self.current_batch_paths.append(path)
+        x=torch.squeeze(x)
         self.buffer_x[path]=(x,y)
         return x, y
 

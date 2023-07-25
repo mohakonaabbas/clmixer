@@ -1,13 +1,13 @@
 {
   "model": {
-    "model_type": "mlp",
-    "hidden_size":20
+    "model_type": "resnet18",
+    "hidden_size":"None"
   },
   "data": {
     "dataset_name":"mvtec",
     "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/mvtec",
     "n_experiments":5,
-    "backbone":"resnet18",
+    "backbone":"None",
     "scenario":"cil"
 
 

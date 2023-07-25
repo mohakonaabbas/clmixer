@@ -2,10 +2,10 @@ import torch
 from torch import nn
 from torch import optim
 
-
-from my_resnet import resnet_rebuffi
-from mlp import MLP
-from mlp_sam import MLP_SAM
+from models import resnet18, dinov2_vitb14,dinov2_vitl14,dinov2_vits14,MLP
+# from my_resnet import resnet_rebuffi
+# from mlp import MLP
+# from mlp_sam import MLP_SAM
 
 
 def get_optimizer(params, optimizer, lr, weight_decay=0.0):
@@ -18,12 +18,16 @@ def get_optimizer(params, optimizer, lr, weight_decay=0.0):
 
 
 def get_net(net_type, **kwargs):
-    if net_type == "convnet":
-        return resnet_rebuffi(**kwargs)
-    elif net_type == "mlp_sam":
-        return MLP_SAM(**kwargs)
+    if net_type == "resnet18":
+        return resnet18()
     elif net_type == "mlp":
         return MLP(**kwargs)
+    elif net_type == "dinov2_vitb14":
+        return dinov2_vitb14()
+    elif net_type == "dinov2_vitl14":
+        return dinov2_vitl14()
+    elif net_type == "dinov2_vits14":
+        return dinov2_vits14()
 
 
 
