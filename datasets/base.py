@@ -17,9 +17,10 @@ from tqdm import tqdm
 import functools
 import PIL
 from typing import List,Union
-from .backbones import Dinov2,Resnet
+from backbones import Dinov2,Resnet, baseBackbone
+# from .backbones import Dinov2,Resnet, baseBackbone
 
-BACKBONES={'dinov2':Dinov2,'resnet':Resnet}
+BACKBONES={'dinov2':Dinov2,'resnet':Resnet,'None':baseBackbone}
 
 class Identity(nn.Module):
     def __init__(self):
@@ -39,7 +40,7 @@ class BaseDataset(torch.utils.data.Dataset):
     def __init__(self, 
                  url : str,
                  name: str,
-                 backbone_name : str,
+                 backbone_name : str ,
                  mode : str,
                  save_embedding : bool,
                  n_splits : int,
@@ -47,12 +48,17 @@ class BaseDataset(torch.utils.data.Dataset):
                  split_distribution=None):
         
         """
-        url :the url of the dataset
-        name: name of the dataset
-        backbone : the backbone to be used
-        mode: the mode of the training train or test
-        buffer_on: wether we bufferize the data
-        save_embedding: save the embeddings on the harddisk
+        Args
+            url :the url of the dataset
+            name: name of the dataset
+            backbone : the backbone to be used
+            mode: the mode of the training train or test
+            buffer_on: wether we bufferize the data
+            save_embedding: save the embeddings on the harddisk
+        
+        Returns
+
+        Raises
 
         
         """
@@ -76,7 +82,8 @@ class BaseDataset(torch.utils.data.Dataset):
         self.default_embedding_location=f"embeddings/{backbone_name}"
 
         
-        # BACKBONE LOADING 
+        # BACKBONE LOADING
+        # Check if any backbone is given 
         # Load the right backbone in eval mode
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device=torch.device(device)
@@ -86,9 +93,11 @@ class BaseDataset(torch.utils.data.Dataset):
             self.backbone=BACKBONES["resnet"](backbone_name=self.backbone_name,device=self.device)
         elif "dinov2" in self.backbone_name:
             self.backbone=BACKBONES["dinov2"](backbone_name=self.backbone_name,device=self.device)
+        else :
+            self.backbone=BACKBONES["None"](backbone_name=self.backbone_name,device=self.device)
 
         # Manage the folder to keep embeddings
-        if save_embedding:
+        if save_embedding and self.backbone.backbone_name != "None":
             self.generateEmbeddings()
 
 
@@ -333,7 +342,11 @@ class BaseDataset(torch.utils.data.Dataset):
                 lbl=self.Y[self.files.index(path)]
                 
             else:
+                
                 img=cv2.imread(path)
+                if img is None:
+                    img=cv2.imread(path,0)
+                assert img is not None
                 x=self.backbone.predict(img)
                 #Save it in the embedding folder
                 lbl=self.Y[self.files.index(path)]
@@ -389,7 +402,10 @@ class BaseDataset(torch.utils.data.Dataset):
             img=cv2.imread(path)
             x=self.backbone.predict(img)
             #Save it in the embedding folder
+            #Save it in the embedding folder
+            
             torch.save(x.detach().cpu(),embedding_path)
+        
 
 
 class simpleDataset(torch.utils.data.Dataset):
@@ -428,7 +444,8 @@ class simpleDataset(torch.utils.data.Dataset):
             img=cv2.imread(path)
             x=self.predictor.predict(img)
             #Save it in the embedding folder
-            torch.save(x.detach().cpu(),embedding_path)
+            if self.predictor.backbone_name != "None":
+                torch.save(x.detach().cpu(),embedding_path)
         
             # y=torch.tensor(lbl,dtype=torch.long)
 
@@ -447,8 +464,8 @@ if __name__=="__main__":
     root_folder_path="/home/mohamedphd/Documents/phd/Datasets/curated/"
 
     datasets_names=os.listdir(root_folder_path)
-    backbones=["dinov2_vits14","resnet18"]
-    modes = ["test","train"]
+    backbones=["None",'dinov2_vits14']
+    modes = ["train"]
 
     for backbone in backbones:
         for dataset_name in  datasets_names:
@@ -464,7 +481,9 @@ if __name__=="__main__":
                                     n_splits=n_splits)
     
                 for input,lbl in dataset:
-                    print(input.shape, lbl)
+                    print(input.shape)
                     break
+                    
+                    
 
 

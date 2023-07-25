@@ -20,6 +20,7 @@ PYTORCH_VISION_REPO="pytorch/vision"
 
 DINOV2_OUTPUTS_SHAPE={"dinov2_vits14":384,"dinov2_vitb14":768,"dinov2_vitb14":1024,"dinov2_vitg14":1536}
 RESNET_OUTPUTS_SHAPE={"resnet18":512}
+BASE_OUTPUTS_SHAPE={'None':(224,244,3)}
 
 class MaybeToTensor(transforms.ToTensor):
     """
@@ -100,12 +101,16 @@ def make_classification_eval_transform(
 
 class baseBackbone:
     def __init__(self,
-                 backone_name,
+                 backbone_name,
                  device):
-        raise NotImplementedError
+        self.backbone_name=backbone_name
+        self.device=device
+        self.output_shape=BASE_OUTPUTS_SHAPE[backbone_name]
+        self.transformations=make_classification_eval_transform()
     
     def predict(self,X):
-        raise NotImplementedError
+        X=self.transformations(X)
+        return X
     
 class Dinov2(baseBackbone):
     """

@@ -258,8 +258,7 @@ class FinetuneOperation(Operation):
         self.inputs.current_network.train()
         return self.inputs
 
-        
-     
+             
 #DONE
 class DuplicateNetworkBackboneOperation(Operation):
     """
