@@ -32,8 +32,11 @@ class CrossEntropyOperation(Operation):
         logits=self.inputs.logits
         targets=self.inputs.targets
         
-        loss = F.cross_entropy(logits, targets,reduction=reduction)
+        loss = F.cross_entropy(logits.softmax(dim=1), targets,reduction=reduction)
         loss_coeff=1.0
+        # if self.inputs.seen_classes_mask is None : loss_coeff=1
+        # else:
+        #     loss_coeff= (sum(self.inputs.task_mask)-sum(self.inputs.seen_classes_mask))/sum(self.inputs.task_mask)
 
         if reduction =="none":
             return loss
@@ -69,8 +72,8 @@ class KnowledgeDistillationOperation(Operation):
 
         log_probs_new = (logits[:, task_mask] / temperature).log_softmax(dim=1)
 
-        probs_old = (old_logits / temperature).softmax(dim=1)
-        loss = F.kl_div(log_probs_new, probs_old[:, task_mask], reduction=reduction)
+        probs_old = (old_logits[:, task_mask] / temperature).softmax(dim=1)
+        loss = F.kl_div(log_probs_new, probs_old, reduction=reduction)
 
         loss_coeff= sum(self.inputs.seen_classes_mask)/sum(self.inputs.task_mask)
         # loss_coeff= 1.0

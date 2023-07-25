@@ -49,7 +49,7 @@ class Trainer:
         print("Trainer initialized ! ")
     
 
-    def train(self):
+    def train(self,_run):
         # Create the optimizer
         
 
@@ -63,7 +63,7 @@ class Trainer:
             self.storage=self.before_training_exp(self.plugins)
             self.storage=self.before_train_dataset_adaptation(self.plugins)
             self.storage=self.after_train_dataset_adaptation(self.plugins)
-            cm=[]
+            # cm=[]
             for epoch in tqdm(range(self.storage.epochs)):
                 self.before_training_epoch(self.plugins)
                 
@@ -78,13 +78,13 @@ class Trainer:
                 self.writer.add_scalar("loss/train",self.storage.loss.item(),exp*self.storage.epochs+epoch)
                 self.after_training_epoch(self.plugins)
 
-                self.epochMetric.update({"y":targets,"y_pred":self.storage.logits}) # Compute with the last batch a proxy of epoch Confusion Matrix
+                # self.epochMetric.update({"y":targets,"y_pred":self.storage.logits}) # Compute with the last batch a proxy of epoch Confusion Matrix
                 # Log the metrics and flush it
                 # Use it and flush it later
-                cm.append(self.epochMetric.result["cm"][0])
+                # cm.append(self.epochMetric.result["cm"][0])
             
                 #Flush it
-                self.epochMetric.reset()
+                # self.epochMetric.reset()
                 
 
             self.after_training_exp(self.plugins)
@@ -94,7 +94,7 @@ class Trainer:
             self.storage.dataloader.dataset.buffer_x={}
             #self.eval('train',self.storage.dataloader,exp) # On train data
             print("Start Evaluation >>>")
-            self.eval('val',self.val_dataloader,exp) # On val data
+            self.eval('val',self.val_dataloader,exp,_run) # On val data
             print("End Evaluation <<<")
             
         
@@ -103,7 +103,7 @@ class Trainer:
                 
         return self.storage
 
-    def eval(self,type, dataloader,exp):
+    def eval(self,type, dataloader,exp,_run):
          # Eval the network
         self.storage=self.before_eval(self.plugins)
         self.storage=self.before_eval_exp(self.plugins)
@@ -126,13 +126,22 @@ class Trainer:
         self.after_eval_exp(self.plugins)
         self.storage.confusion_matrix[type].update({exp:self.taskMetric.result['cm'][0]})
         accuracies=metrics.Accuracy().compute(self.storage.confusion_matrix[type])
+        # print("Confusion Matrix",self.storage.confusion_matrix[type][exp])
         accuracy=accuracies[list(accuracies.keys())[-1]]
+        accuracy=accuracy[self.storage.seen_classes_mask]
         accuracy=accuracy.tolist()
-        cls_name=np.arange(len(accuracy))
+        cls_name=np.arange(len(self.storage.seen_classes_mask))
+        cls_name=cls_name[self.storage.seen_classes_mask]
+
         cls_name=list(map(lambda x : str(x)+"_cls_"+self.storage.dataloader.dataset.label_dict_inverted[x],cls_name))
         plot=dict(zip(cls_name,accuracy))
 
         self.writer.add_scalars("eval/acc_i/",plot,exp)
+
+        # Log in sacred
+        for key,value in plot.items():
+            _run.log_scalar(key, value, exp)
+
         self.after_eval(self.plugins)
         self.taskMetric.reset()
 
@@ -232,7 +241,8 @@ class Trainer:
                                 n_splits=n_experiments,
                                 mode="test",
                                 save_embedding=True,
-                                split_mode=split_mode)
+                                split_mode=split_mode,
+                                split_distribution=train_dataset.split_distributions)
        
         self.dataloader = data.DataLoader(train_dataset, 
                                     batch_size=self.config["optimisation"]["batch_size"],
@@ -527,7 +537,7 @@ class Trainer:
 @ex.automain
 def main(_run):
     trainer=Trainer(_run.config["config_path"])
-    trainer.train()
+    trainer.train(_run)
 
 
     

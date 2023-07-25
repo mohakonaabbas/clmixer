@@ -43,7 +43,8 @@ class BaseDataset(torch.utils.data.Dataset):
                  mode : str,
                  save_embedding : bool,
                  n_splits : int,
-                 split_mode : str = "cil"):
+                 split_mode : str = "cil",
+                 split_distribution=None):
         
         """
         url :the url of the dataset
@@ -100,6 +101,7 @@ class BaseDataset(torch.utils.data.Dataset):
         
         self.weights=max(self.counts)/np.array(self.counts)
         self.n_splits=n_splits
+        self.split_distributions=split_distribution
         self.datasets,self.datasets_labels=self.splitDataset() # SPlit the dataset according to an industrial scheme
         self.activated_files_subset =  self.datasets[0] # The current split
         self.activated_files_labels_subset = self.datasets_labels[0] # The current split
@@ -119,11 +121,13 @@ class BaseDataset(torch.utils.data.Dataset):
 
     def step(self):
         self.current_experiment+=1
+        if self.mode== "test":
         # We have a different behaviour based onn the mode we are in
-        if self.mode == "test":
-            self.activated_files_subset=self.files
-            self.activated_files_labels_subset=self.Y
-        else:
+
+            self.activated_files_subset=functools.reduce(lambda a, b: a+b, self.datasets[:self.current_experiment+1])
+            self.activated_files_labels_subset=functools.reduce(lambda a, b: a+b, self.datasets_labels[:self.current_experiment+1])
+
+        if self.mode == "train":
             self.activated_files_subset=self.datasets[self.current_experiment]
             self.activated_files_labels_subset=self.datasets_labels[self.current_experiment]
 
@@ -150,32 +154,45 @@ class BaseDataset(torch.utils.data.Dataset):
         
         splits=np.random.rand(self.counts.shape[0],self.n_splits)
         N_label=self.counts.shape[0]
-        # n_chunks=N_label//self.n_splits
 
-        if self.split_mode == "cil":
-            # CIL mode generation
-            splits=np.zeros((N_label,self.n_splits),dtype=int)
+        # Check if the split distributions exists
+        if self.split_distributions is not None:
+            splits=self.split_distributions
+        #Otherwise, compute a new one freely
+        else:
 
-            non_occupied_columns=np.arange(self.n_splits).tolist()
+            # n_chunks=N_label//self.n_splits
 
-            for i in range(N_label):
-                if sum(splits[i,:])==0:
-                    if len(non_occupied_columns)>0:
-                        k=np.random.choice(non_occupied_columns)
-                        splits[i,k]=1
-                        non_occupied_columns.remove(k)
-                    else:
-                        j=np.random.choice(self.n_splits)
-                        splits[i,j]=1
+            if self.split_mode == "cil":
+                # CIL mode generation
+                splits=np.zeros((N_label,self.n_splits),dtype=int)
 
-                    
-        elif self.split_mode == "indus":
-            # Pure idustrial mode
-            splits=splits/np.sum(splits,axis=1).reshape(-1,1)
+                non_occupied_columns=np.arange(self.n_splits).tolist()
 
-        elif self.split_mode == "indus_cil":
-            mask= np.random.choice([True,False],size=splits.shape)
-            splits=mask*splits+np.roll(~mask*splits,1,axis=1)
+                for i in range(N_label):
+                    if sum(splits[i,:])==0:
+                        if len(non_occupied_columns)>0:
+                            k=np.random.choice(non_occupied_columns)
+                            splits[i,k]=1
+                            non_occupied_columns.remove(k)
+                        else:
+                            j=np.random.choice(self.n_splits)
+                            splits[i,j]=1
+
+                        
+            elif self.split_mode == "indus":
+                # Pure idustrial mode
+                splits=splits/np.sum(splits,axis=1).reshape(-1,1)
+
+            elif self.split_mode == "indus_cil":
+                mask= np.random.choice([True,False],size=splits.shape)
+                splits=splits/np.sum(splits,axis=1).reshape(-1,1)
+                splits=mask*splits+np.roll(~mask*splits,1,axis=1)
+                
+            
+            # Save the split distribution
+            # It will be passed to the eval and test set
+            self.split_distributions=splits
 
         self.splits=splits*self.counts.reshape(-1,1)
         self.splits = self.splits.astype(np.int16)

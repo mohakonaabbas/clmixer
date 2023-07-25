@@ -47,11 +47,15 @@ class ConfusionMatrix(OperationMetric):
         """
         Using the final prediction ( after all postprocessing needed ), compute the metric from the predicted 
         """
+
+        # Get the maximum size of the confusion matrix
+        m=inputs["y_pred"].shape[-1]
+
+
         y_pred=inputs["y_pred"].argmax(dim=1)
 
         targets=inputs["y"]
-        # Get the maximum size of the confusion matrix
-        m=max(1+torch.max(targets),1+torch.max(y_pred))
+        
         
         if self.result['cm'] =={}:
             self.result['cm'][self.internal_count]=np.zeros((m,m))
@@ -62,12 +66,13 @@ class ConfusionMatrix(OperationMetric):
                 cm[:prev_m,:prev_m]=self.result['cm'][self.internal_count]
                 self.result['cm'][self.internal_count]=cm
         
-        for i in range(m): # prediction loop
-            for j in range(m): # Target loop
-                #Extract the correspondance
-                mask1= y_pred==i
-                mask2=targets==j
-                self.result['cm'][self.internal_count][i,j]+=sum(mask1*mask2).item()
+        for i in range(len(y_pred)): # prediction loop
+            # for j in range(len(targets)): # Target loop
+            #     #Extract the correspondance
+            #     # mask1= y_pred==i
+            #     # mask2=targets==j
+            self.result['cm'][self.internal_count][y_pred[i],targets[i]]+=1
+        # print(self.result['cm'][self.internal_count])
                 
         # print(self.result['cm'][self.internal_count])
         # self.internal_count+=1

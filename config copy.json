@@ -1,20 +1,20 @@
 {
   "model": {
     "model_type": "mlp",
-    "hidden_size":16
+    "hidden_size":128
   },
   "data": {
     "dataset_name":"mvtec",
     "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/mvtec",
-    "n_experiments":10,
+    "n_experiments":5,
     "backbone":"dinov2_vits14",
-    "scenario":"indus_cil"
+    "scenario":"cil"
 
 
   },
   "optimisation": {
     "lr": 1e-3,
-    "epochs": 100,
+    "epochs": 500,
     "optimizer": {
       "type": "adam",
       "weight_decay": 0.0005
@@ -28,29 +28,9 @@
   },
   "plugins": [
     {
-      "name": "dirichlet_uncertainty_loss",
-      "hyperparameters": {
-        "kl_annealing_step": 75,
-        "regressor":"bce"
-      },
-      "function": "bias_mitigation"
-    },
-    {
-      "name": "knowledge_distillation",
-      "hyperparameters": {
-        "temperature": 2
-      },
-      "function": "knowledge_retention"
-    },
-    {
       "name": "cross_entropy",
       "hyperparameters": {},
       "function": "knowledge_incorporation"
-    },
-    {
-      "name": "duplicate_network",
-      "hyperparameters": {},
-      "function": "representation_learning"
     },
     {
       "name": "random_memory",
