@@ -1,7 +1,8 @@
 import json
 from enum import Enum
 from typing import Callable , Union ,Dict
-from  storage import Storage
+from  ..storage import Storage
+
 class EntryPoints(Enum):
     """
     #Training loop
@@ -80,13 +81,12 @@ class Operation:
     - A paper reference 
     """
     def __init__(self,
-                 name : str,
                  entry_point : str,
                  inputs : Union[dict, Storage,None],
                  callback : Callable,
                  paper_ref: str,
                  is_loss : bool = False):
-        
+        name=self.__class__.__name__
         self.set_name(name)
         self.set_entry_point(entry_point)
         self.set_inputs(inputs)
@@ -127,6 +127,13 @@ class Operation:
         self.callback=callback
         # print(self.callback)
 
+    def set_config_template(self,template : Dict):
+        """
+        Args
+            template : dict : a dictionnary which give the template for the config file building
+
+        """
+        self.config_template = template
     
     def set_outputs(self,outputs):
         """

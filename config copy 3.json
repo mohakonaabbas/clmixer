@@ -1,20 +1,20 @@
 {
   "model": {
-    "model_type": "resnet18",
-    "hidden_size":"None"
+    "model_type": "mlp",
+    "hidden_size":"50"
   },
   "data": {
-    "dataset_name":"mvtec",
+    "dataset_name":"easy",
     "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/mvtec",
     "n_experiments":5,
-    "backbone":"None",
+    "backbone":"dinov2_vits14",
     "scenario":"cil"
 
 
   },
   "optimisation": {
     "lr": 1e-3,
-    "epochs": 500,
+    "epochs": 50,
     "optimizer": {
       "type": "adam",
       "weight_decay": 0.0005
@@ -28,12 +28,12 @@
   },
   "plugins": [
     {
-      "name": "cross_entropy",
+      "name": "CrossEntropyOperation",
       "hyperparameters": {},
       "function": "knowledge_incorporation"
     },
     {
-      "name": "random_memory",
+      "name": "RandomMemoryUpdaterOperation",
       "hyperparameters": {
         "cls_budget": 10
       },

@@ -1,5 +1,4 @@
-from plugins import return_plugin
-from base_plugin import Operation,EntryPoints
+from plugins import return_plugin,Operation,EntryPoints
 import json
 import factory
 import numpy as np
