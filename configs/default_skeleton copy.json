@@ -1,0 +1,36 @@
+{
+  "model": {
+    "model_type": "mlp",
+    "hidden_size":128
+  },
+  "data": {
+    "dataset_name":"dataname",
+    "data_path": "path/to/data",
+    "n_experiments":1,
+    "backbone":"dinov2_vits14",
+    "scenario":"cil"
+
+
+  },
+  "optimisation": {
+    "lr": 1e-3,
+    "epochs": 1000,
+    "optimizer": {
+      "type": "adam",
+      "weight_decay": 0.0005
+    },
+    "batch_size": 32,
+    "device": "cuda"
+  },
+  "human_knowledge": {
+    "nbrs_known_classes": 4,
+    "classes_simmilary": []
+  },
+  "plugins": [
+    {
+      "name": "cross_entropy",
+      "hyperparameters": {},
+      "function": "knowledge_incorporation"
+    }
+  ]
+}

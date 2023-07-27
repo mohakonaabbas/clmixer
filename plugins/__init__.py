@@ -29,8 +29,8 @@ for module in modules:
     cls=[x for x in clsmembers if (issubclass(x[1],Operation)) and (not x[1]== Operation)]
     plugins_list +=cls
 
-plugins=dict(plugins_list)
-print("Avalaible plugins are :\n","\n".join(list(plugins.keys())))
-__all__=[plugins,Operation,EntryPoints]
+plugins_dict=dict(plugins_list)
+print("Avalaible plugins are :\n","\n".join(list(plugins_dict.keys())))
+__all__=[plugins_dict,Operation,EntryPoints]
 def return_plugin(name):
-    return plugins[name]
+    return plugins_dict[name]

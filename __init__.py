@@ -1,7 +1,7 @@
 from training import ex
-config_path="./config copy 3.json"
+from configs import generate_save_conditions_experiments
+configs=generate_save_conditions_experiments(experiment_name="Conditions_Of_IL_Experiments_Repr_Fixed",representation=['Repr_Fixed'])
+config_path="./configs/default_skeleton copy.json"
 ex.add_config(config_path)
-ex.add_config(
-    config_path=config_path
-)
-r=ex.run()
+for config in configs:
+    r=ex.run(config_updates=config)

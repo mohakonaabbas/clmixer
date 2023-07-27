@@ -24,7 +24,7 @@ ex=Experiment(base_dir=base_dir)
 # MongoDB Observer
 from sacred.observers import MongoObserver
 ex.observers.append(MongoObserver.create(url='127.0.0.1:27017', db_name='classil'))
-
+from typing import Union
 
 class Trainer:
     """
@@ -33,10 +33,14 @@ class Trainer:
 
     """
 
-    def __init__(self,config_path) -> None:
-        self.config_path=config_path
-        with open(self.config_path,'r') as f:
-            self.config=json.load(f)
+    def __init__(self,config_path : Union[str,dict]) -> None:
+
+        if type(config_path)==str:
+            self.config_path=config_path
+            with open(self.config_path,'r') as f:
+                self.config=json.load(f)
+        elif type(config_path)==dict:
+            self.config=config_path
         self.dataloader=self.parse_config_and_initialize_dataloader()
         self.storage=self.parse_config_and_initialize_storage()
         self.plugins=self.parse_config_and_initialize_plugins()
@@ -535,13 +539,11 @@ class Trainer:
 
 @ex.automain
 def main(_run):
-    trainer=Trainer(_run.config["config_path"])
+    trainer=Trainer(_run.config)
     trainer.train(_run)
 
 
     
 
 if __name__=="__main__":
-    config_path="./config copy 3.json"
-    ex.add_config(config_path)
     ex.run_commandline()
