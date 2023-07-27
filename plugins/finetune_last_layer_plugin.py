@@ -21,7 +21,7 @@ class FinetuneOperation(Operation):
         self.set_config_template({
       "name": self.__class__.__name__,
       "hyperparameters": {
-        "finetune_epochs": 10,
+        "finetune_epochs": 100,
         "finetune_bs":32,
         "finetune_lr":1e-3,
         "cls_budget":15

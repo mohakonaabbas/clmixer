@@ -452,7 +452,7 @@ class simpleDataset(torch.utils.data.Dataset):
             # y=torch.tensor(lbl,dtype=torch.long)
 
 
-
+        x=torch.squeeze(x)
         lbl=self.y[idx] 
 
         y=torch.tensor(int(lbl),dtype=torch.long)
