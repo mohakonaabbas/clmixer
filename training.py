@@ -23,8 +23,14 @@ ex=Experiment(base_dir=base_dir)
 
 # MongoDB Observer
 from sacred.observers import MongoObserver
-ex.observers.append(MongoObserver.create(url='127.0.0.1:27017', db_name='classil'))
+ex.observers.append(MongoObserver.create(url='127.0.0.1:27017', db_name='experiments_representation_fixed'))
 from typing import Union
+
+# Register the json pickle
+import jsonpickle.ext.numpy as jsonpickle_numpy
+jsonpickle_numpy.register_handlers()
+import jsonpickle
+
 
 class Trainer:
     """
@@ -102,8 +108,9 @@ class Trainer:
             
         
         self.after_training(self.plugins)
-
-                
+        print("End Training <<< \n\n ")
+        _run.info["confusion_matrix"]=self.storage.confusion_matrix
+   
         return self.storage
 
     def eval(self,type, dataloader,exp,_run):
@@ -245,7 +252,8 @@ class Trainer:
                                 mode="test",
                                 save_embedding=True,
                                 split_mode=split_mode,
-                                split_distribution=train_dataset.split_distributions)
+                                split_distribution=train_dataset.split_distributions,
+                                label_dict=train_dataset.label_dict)
        
         self.dataloader = data.DataLoader(train_dataset, 
                                     batch_size=self.config["optimisation"]["batch_size"],
@@ -537,8 +545,9 @@ class Trainer:
 
         return self.storage
 
-@ex.automain
+@ex.main
 def main(_run):
+    # print(_run.config)
     trainer=Trainer(_run.config)
     trainer.train(_run)
 

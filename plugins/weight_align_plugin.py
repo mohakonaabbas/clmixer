@@ -32,7 +32,7 @@ class WeightAlignOperation(Operation):
 
         if self.inputs.stage_name=="after_eval_forward":
             #Apply WA transform on data
-            self.inputs.logits=self.wa.post_process(self.inputs.logits,self.inputs.task_mask)
+            self.inputs.logits=self.wa.post_process(self.inputs.logits,self.inputs.seen_classes_mask)
             
         elif self.inputs.stage_name=="after_training_exp":
             network=self.inputs.current_network

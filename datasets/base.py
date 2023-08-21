@@ -45,7 +45,8 @@ class BaseDataset(torch.utils.data.Dataset):
                  save_embedding : bool,
                  n_splits : int,
                  split_mode : str = "cil",
-                 split_distribution=None):
+                 split_distribution=None,
+                 label_dict=None):
         
         """
         Args
@@ -73,7 +74,7 @@ class BaseDataset(torch.utils.data.Dataset):
         # Load the files in the root folder
         self.dataset_name=name
         self.url=url
-        self.files,self.Y=self.load(url,[],mode)
+        self.files,self.Y=self.load(url,[],mode,label_dict)
 
 
         self.save_embedding=save_embedding
@@ -106,11 +107,29 @@ class BaseDataset(torch.utils.data.Dataset):
         
         self.current_experiment=-1 # Before the beginning of the training procedure
         self.counts=np.unique(self.Y,return_counts=True)[1] # list(map(lambda x: len(os.listdir(os.path.join(url,x))),self.named_labels))
+        # In the case of testing, we might have a disapearing class in case of severe inbalance,
+        # in that case, we need to expand with zeros counts the non existing labels
+            
+        self.split_distributions=split_distribution
+        if self.split_distributions is not None:
+            
+            if self.counts.shape[0]!=self.split_distributions.shape[0]:
+                (uniqueIds,counts)=np.unique(self.Y,return_counts=True)
+                n=self.split_distributions.shape[0]
+                counts=np.zeros((n,1))
+                for i in range(len(uniqueIds)):
+                    idx=uniqueIds[i]
+                    counts[idx]=self.counts[i]
+                self.counts=counts
+
+        
+        
         print(f" Weights :  {self.counts}")
+
         
         self.weights=max(self.counts)/np.array(self.counts)
         self.n_splits=n_splits
-        self.split_distributions=split_distribution
+        
         self.datasets,self.datasets_labels=self.splitDataset() # SPlit the dataset according to an industrial scheme
         self.activated_files_subset =  self.datasets[0] # The current split
         self.activated_files_labels_subset = self.datasets_labels[0] # The current split
@@ -167,6 +186,8 @@ class BaseDataset(torch.utils.data.Dataset):
         # Check if the split distributions exists
         if self.split_distributions is not None:
             splits=self.split_distributions
+
+
         #Otherwise, compute a new one freely
         else:
 
@@ -206,7 +227,7 @@ class BaseDataset(torch.utils.data.Dataset):
         self.splits=splits*self.counts.reshape(-1,1)
         self.splits = self.splits.astype(np.int16)
         
-        print(self.splits)
+        print("Splits", self.splits)
 
         labels=np.unique(self.Y)
 
@@ -247,7 +268,8 @@ class BaseDataset(torch.utils.data.Dataset):
     def load(self,
              url : str,
              rejectedClasses: List[str],
-             mode : str):
+             mode : str,
+             label_dict : Union[dict,None]):
         """
         Load on the disk the files
         It assumes that each folder represent a class.
@@ -255,11 +277,20 @@ class BaseDataset(torch.utils.data.Dataset):
         """
         self.dataset_image_path = os.path.join(url,"data")
         # Get the labels names : Title of the folder
-        self.named_labels=os.listdir(self.dataset_image_path)
-        self.labels=np.arange(len(self.named_labels),dtype=int)
-        # Create an ordered dict mapping int to 
-        self.label_dict=dict(zip(self.named_labels,self.labels))
+
+        if label_dict:
+            self.label_dict=label_dict
+            self.labels=list(self.label_dict.values())
+            self.named_labels=list(self.label_dict.keys())
+
+        else:
+            self.named_labels=os.listdir(self.dataset_image_path)
+            self.labels=np.arange(len(self.named_labels),dtype=int)
+            # Create an ordered dict mapping int to 
+            self.label_dict=dict(zip(self.named_labels,self.labels))
         self.label_dict_inverted=dict(zip(self.labels,self.named_labels))
+        
+        print(self.label_dict_inverted)
 
         self.rejected_classes=rejectedClasses
         

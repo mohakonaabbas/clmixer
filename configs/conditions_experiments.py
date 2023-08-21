@@ -8,7 +8,9 @@ import os
 from plugins import plugins_dict
 import copy
 
-def generate_save_conditions_experiments(experiment_name,representation=['Repr_Fixed','Repr_Free']):
+def generate_save_conditions_experiments(experiment_name,
+                                         representation=['Repr_Fixed','Repr_Free'],
+                                         scenarii = ['cil','indus_cil'],):
     dirname=os.path.dirname(os.path.realpath(__file__))
     save_path=os.path.join(dirname,experiment_name)
     if not os.path.exists(save_path):
@@ -29,7 +31,7 @@ def generate_save_conditions_experiments(experiment_name,representation=['Repr_F
             "/home/mohamedphd/Documents/phd/Datasets/curated/nouvel_op"]
 
 
-    scenarii = ['cil','indus_cil']
+    
     with open(default_path, 'r') as f:
         default_dict=json.load(f)
 
@@ -52,6 +54,8 @@ def generate_save_conditions_experiments(experiment_name,representation=['Repr_F
                     'Retention':[None, plugins_dict['KnowledgeDistillationOperation']],
                     'Bias':[None,plugins_dict['FinetuneOperation'],plugins_dict['WeightAlignOperation'] ],
                     'Uncertainty' : [None,plugins_dict['DirichletUncertaintyLossOperation'] ]}
+
+
     configs=[]
     working_json=copy.deepcopy(default_dict)
     for scenario in scenarii:
@@ -93,12 +97,15 @@ def generate_save_conditions_experiments(experiment_name,representation=['Repr_F
                                         name="_".join([model,backbone,path.split("/")[-1],scenario,kn_name,ret_name,bias_name,unc_name])
                                         name=name+".json"
 
+
                                         with open(os.path.join(save_path,name), 'w') as f:
-                                            json.dump(working_json,f)
+                                            json.dump(working_json,f,indent=4)
 
 
-    return configs
-                                        
+    return save_path
+
+if __name__=="__main__":
+    generate_save_conditions_experiments(experiment_name="Conditions_Of_IL_Experiments_Repr_Fixed",representation=['Repr_Fixed'])                                        
                                         
 
 

@@ -124,5 +124,5 @@ class WA(object):
 
     @torch.no_grad()
     def post_process(self, preds, task_mask):
-        preds[:, task_mask] = preds[:, not task_mask] * self.gamma
+        preds[:, not task_mask] = preds[:, not task_mask] * self.gamma
         return preds
