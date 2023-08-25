@@ -1,0 +1,262 @@
+{
+    "experiment": "mlp_resnet18_easy_indus_cil_CrossEntropyOperation_KnowledgeDistillationOperation_WeightAlignOperation_DirichletUncertaintyLossOperation",
+    "status": "COMPLETED",
+    "start_time": "08/13/2023, 15:36:23",
+    "stop_time": "08/13/2023, 15:36:33",
+    "setup": [
+        "CrossEntropyOperation",
+        "KnowledgeDistillationOperation",
+        "WeightAlignOperation",
+        "DirichletUncertaintyLossOperation"
+    ],
+    "config": {
+        "data": {
+            "backbone": "resnet18",
+            "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/easy",
+            "dataset_name": "easy",
+            "n_experiments": 5,
+            "scenario": "indus_cil"
+        },
+        "human_knowledge": {
+            "classes_simmilary": [],
+            "nbrs_known_classes": 4
+        },
+        "model": {
+            "hidden_size": 20,
+            "model_type": "mlp"
+        },
+        "optimisation": {
+            "batch_size": 32,
+            "device": "cuda",
+            "epochs": 500,
+            "lr": 0.001,
+            "optimizer": {
+                "type": "adam",
+                "weight_decay": 0.0005
+            }
+        },
+        "plugins": [
+            {
+                "name": "RandomMemoryUpdaterOperation",
+                "hyperparameters": {
+                    "cls_budget": 10
+                },
+                "function": "knowledge_retention"
+            },
+            {
+                "name": "CrossEntropyOperation",
+                "hyperparameters": {},
+                "function": "knowledge_incorporation"
+            },
+            {
+                "name": "KnowledgeDistillationOperation",
+                "hyperparameters": {
+                    "temperature": 2
+                },
+                "function": "knowledge_retention"
+            },
+            {
+                "name": "WeightAlignOperation",
+                "hyperparameters": {},
+                "function": "bias_mitigation"
+            },
+            {
+                "name": "DirichletUncertaintyLossOperation",
+                "hyperparameters": {
+                    "kl_annealing_step": 150,
+                    "regressor": "mse"
+                },
+                "function": "bias_mitigation"
+            }
+        ],
+        "seed": 31101994
+    },
+    "cil_metrics": [
+        {
+            "acc": {
+                "0": 0.02380952380952338,
+                "1": 0.09122807017543764,
+                "2": 0.09214092140921336,
+                "3": 0.0887290167865701,
+                "4": 0.08008658008657957
+            }
+        },
+        {
+            "mica": {
+                "0": 0.0,
+                "1": 0.0,
+                "2": 0.0,
+                "3": 0.0,
+                "4": 0.0
+            }
+        }
+    ],
+    "info": {
+        "confusion_matrix": {
+            "train": {},
+            "val": {
+                "json://0": [
+                    [
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        52,
+                        4
+                    ]
+                ],
+                "json://1": [
+                    [
+                        26,
+                        65,
+                        4
+                    ],
+                    [
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        0,
+                        0
+                    ]
+                ],
+                "json://2": [
+                    [
+                        34,
+                        65,
+                        24
+                    ],
+                    [
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        0,
+                        0
+                    ]
+                ],
+                "json://3": [
+                    [
+                        37,
+                        78,
+                        24
+                    ],
+                    [
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        0,
+                        0
+                    ]
+                ],
+                "json://4": [
+                    [
+                        37,
+                        78,
+                        39
+                    ],
+                    [
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        0,
+                        0
+                    ]
+                ]
+            }
+        },
+        "metrics": [
+            {
+                "name": "0_cls_Hazelnut",
+                "run_id": 12,
+                "steps": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4
+                ],
+                "values": [
+                    0.0,
+                    0.2736842105263129,
+                    0.27642276422764006,
+                    0.2661870503597103,
+                    0.2402597402597387
+                ]
+            },
+            {
+                "name": "1_cls_Rotary_beacon_light",
+                "run_id": 12,
+                "steps": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4
+                ],
+                "values": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                ]
+            },
+            {
+                "name": "2_cls_Coffee_beans",
+                "run_id": 12,
+                "steps": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4
+                ],
+                "values": [
+                    0.07142857142857015,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                ]
+            }
+        ]
+    },
+    "host": {
+        "hostname": "mohamedphd-TensorBook-2022",
+        "os": [
+            "Linux",
+            "Linux-6.2.0-26-generic-x86_64-with-glibc2.35"
+        ],
+        "python_version": "3.9.16",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-12800H",
+        "gpus": {
+            "gpus": [
+                {
+                    "model": "NVIDIA GeForce RTX 3080 Ti Laptop GPU",
+                    "total_memory": 16384,
+                    "persistence_mode": false
+                }
+            ],
+            "driver_version": "525.125.06"
+        },
+        "ENV": {}
+    }
+}

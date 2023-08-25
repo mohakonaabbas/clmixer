@@ -1,0 +1,247 @@
+{
+    "experiment": "mlp_resnet18_easy_indus_cil_CrossEntropyOperation_None_WeightAlignOperation_None",
+    "status": "COMPLETED",
+    "start_time": "08/13/2023, 18:15:29",
+    "stop_time": "08/13/2023, 18:15:35",
+    "setup": [
+        "CrossEntropyOperation",
+        "None",
+        "WeightAlignOperation",
+        "None"
+    ],
+    "config": {
+        "data": {
+            "backbone": "resnet18",
+            "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/easy",
+            "dataset_name": "easy",
+            "n_experiments": 5,
+            "scenario": "indus_cil"
+        },
+        "human_knowledge": {
+            "classes_simmilary": [],
+            "nbrs_known_classes": 4
+        },
+        "model": {
+            "hidden_size": 20,
+            "model_type": "mlp"
+        },
+        "optimisation": {
+            "batch_size": 32,
+            "device": "cuda",
+            "epochs": 500,
+            "lr": 0.001,
+            "optimizer": {
+                "type": "adam",
+                "weight_decay": 0.0005
+            }
+        },
+        "plugins": [
+            {
+                "name": "RandomMemoryUpdaterOperation",
+                "hyperparameters": {
+                    "cls_budget": 10
+                },
+                "function": "knowledge_retention"
+            },
+            {
+                "name": "CrossEntropyOperation",
+                "hyperparameters": {},
+                "function": "knowledge_incorporation"
+            },
+            {
+                "name": "WeightAlignOperation",
+                "hyperparameters": {},
+                "function": "bias_mitigation"
+            }
+        ],
+        "seed": 31101994
+    },
+    "cil_metrics": [
+        {
+            "acc": {
+                "0": 0.02380952380952338,
+                "1": 0.25457875457871193,
+                "2": 0.38731884057967286,
+                "3": 0.36800334168750526,
+                "4": 0.3833333333333027
+            }
+        },
+        {
+            "mica": {
+                "0": 0.0,
+                "1": 0.0,
+                "2": 0.0,
+                "3": 0.0,
+                "4": 0.0
+            }
+        }
+    ],
+    "info": {
+        "confusion_matrix": {
+            "train": {},
+            "val": {
+                "json://0": [
+                    [
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        52,
+                        4
+                    ]
+                ],
+                "json://1": [
+                    [
+                        24,
+                        65,
+                        2
+                    ],
+                    [
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        2,
+                        0,
+                        2
+                    ]
+                ],
+                "json://2": [
+                    [
+                        33,
+                        65,
+                        17
+                    ],
+                    [
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        1,
+                        0,
+                        7
+                    ]
+                ],
+                "json://3": [
+                    [
+                        36,
+                        78,
+                        19
+                    ],
+                    [
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        1,
+                        0,
+                        5
+                    ]
+                ],
+                "json://4": [
+                    [
+                        36,
+                        78,
+                        30
+                    ],
+                    [
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        1,
+                        0,
+                        9
+                    ]
+                ]
+            }
+        },
+        "metrics": [
+            {
+                "name": "0_cls_Hazelnut",
+                "run_id": 91,
+                "steps": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4
+                ],
+                "values": [
+                    0.0,
+                    0.26373626373626086,
+                    0.28695652173912795,
+                    0.2706766917293213,
+                    0.24999999999999828
+                ]
+            },
+            {
+                "name": "1_cls_Rotary_beacon_light",
+                "run_id": 91,
+                "steps": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4
+                ],
+                "values": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                ]
+            },
+            {
+                "name": "2_cls_Coffee_beans",
+                "run_id": 91,
+                "steps": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4
+                ],
+                "values": [
+                    0.07142857142857015,
+                    0.499999999999875,
+                    0.8749999999998906,
+                    0.8333333333331945,
+                    0.89999999999991
+                ]
+            }
+        ]
+    },
+    "host": {
+        "hostname": "mohamedphd-TensorBook-2022",
+        "os": [
+            "Linux",
+            "Linux-6.2.0-26-generic-x86_64-with-glibc2.35"
+        ],
+        "python_version": "3.9.16",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-12800H",
+        "gpus": {
+            "gpus": [
+                {
+                    "model": "NVIDIA GeForce RTX 3080 Ti Laptop GPU",
+                    "total_memory": 16384,
+                    "persistence_mode": false
+                }
+            ],
+            "driver_version": "525.125.06"
+        },
+        "ENV": {}
+    }
+}

@@ -1,0 +1,255 @@
+{
+    "experiment": "mlp_dinov2_vits14_easy_indus_cil_CrossEntropyOperation_KnowledgeDistillationOperation_WeightAlignOperation_None",
+    "status": "COMPLETED",
+    "start_time": "08/13/2023, 15:24:52",
+    "stop_time": "08/13/2023, 15:24:59",
+    "setup": [
+        "cil",
+        "CrossEntropyOperation",
+        "KnowledgeDistillationOperation",
+        "WeightAlignOperation",
+        "None"
+    ],
+    "config": {
+        "data": {
+            "backbone": "dinov2_vits14",
+            "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/easy",
+            "dataset_name": "easy",
+            "n_experiments": 5,
+            "scenario": "indus_cil"
+        },
+        "human_knowledge": {
+            "classes_simmilary": [],
+            "nbrs_known_classes": 4
+        },
+        "model": {
+            "hidden_size": 20,
+            "model_type": "mlp"
+        },
+        "optimisation": {
+            "batch_size": 32,
+            "device": "cuda",
+            "epochs": 500,
+            "lr": 0.001,
+            "optimizer": {
+                "type": "adam",
+                "weight_decay": 0.0005
+            }
+        },
+        "plugins": [
+            {
+                "name": "RandomMemoryUpdaterOperation",
+                "hyperparameters": {
+                    "cls_budget": 10
+                },
+                "function": "knowledge_retention"
+            },
+            {
+                "name": "CrossEntropyOperation",
+                "hyperparameters": {},
+                "function": "knowledge_incorporation"
+            },
+            {
+                "name": "KnowledgeDistillationOperation",
+                "hyperparameters": {
+                    "temperature": 2
+                },
+                "function": "knowledge_retention"
+            },
+            {
+                "name": "WeightAlignOperation",
+                "hyperparameters": {},
+                "function": "bias_mitigation"
+            }
+        ],
+        "seed": 31101994
+    },
+    "cil_metrics": [
+        {
+            "acc": {
+                "0": 0.6666666666665769,
+                "1": 0.9999999999998987,
+                "2": 0.9999999999999711,
+                "3": 0.9999999999999728,
+                "4": 0.9999999999999781
+            }
+        },
+        {
+            "mica": {
+                "0": 0.0,
+                "1": 0.99999999999975,
+                "2": 0.9999999999999584,
+                "3": 0.9999999999999584,
+                "4": 0.9999999999999729
+            }
+        }
+    ],
+    "info": {
+        "confusion_matrix": {
+            "train": {},
+            "val": {
+                "json://0": [
+                    [
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        52,
+                        0
+                    ],
+                    [
+                        0,
+                        0,
+                        4
+                    ]
+                ],
+                "json://1": [
+                    [
+                        26,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        65,
+                        0
+                    ],
+                    [
+                        0,
+                        0,
+                        4
+                    ]
+                ],
+                "json://2": [
+                    [
+                        34,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        65,
+                        0
+                    ],
+                    [
+                        0,
+                        0,
+                        24
+                    ]
+                ],
+                "json://3": [
+                    [
+                        37,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        78,
+                        0
+                    ],
+                    [
+                        0,
+                        0,
+                        24
+                    ]
+                ],
+                "json://4": [
+                    [
+                        37,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        78,
+                        0
+                    ],
+                    [
+                        0,
+                        0,
+                        39
+                    ]
+                ]
+            }
+        },
+        "metrics": [
+            {
+                "name": "0_cls_Hazelnut",
+                "run_id": 7,
+                "steps": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4
+                ],
+                "values": [
+                    0.0,
+                    0.9999999999999616,
+                    0.9999999999999706,
+                    0.9999999999999729,
+                    0.9999999999999729
+                ]
+            },
+            {
+                "name": "1_cls_Rotary_beacon_light",
+                "run_id": 7,
+                "steps": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4
+                ],
+                "values": [
+                    0.9999999999999807,
+                    0.9999999999999847,
+                    0.9999999999999847,
+                    0.9999999999999872,
+                    0.9999999999999872
+                ]
+            },
+            {
+                "name": "2_cls_Coffee_beans",
+                "run_id": 7,
+                "steps": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4
+                ],
+                "values": [
+                    0.99999999999975,
+                    0.99999999999975,
+                    0.9999999999999584,
+                    0.9999999999999584,
+                    0.9999999999999744
+                ]
+            }
+        ]
+    },
+    "host": {
+        "hostname": "mohamedphd-TensorBook-2022",
+        "os": [
+            "Linux",
+            "Linux-6.2.0-26-generic-x86_64-with-glibc2.35"
+        ],
+        "python_version": "3.9.16",
+        "cpu": "12th Gen Intel(R) Core(TM) i7-12800H",
+        "gpus": {
+            "gpus": [
+                {
+                    "model": "NVIDIA GeForce RTX 3080 Ti Laptop GPU",
+                    "total_memory": 16384,
+                    "persistence_mode": false
+                }
+            ],
+            "driver_version": "525.125.06"
+        },
+        "ENV": {}
+    }
+}
