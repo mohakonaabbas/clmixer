@@ -13,6 +13,7 @@ import os
 from bson.objectid import ObjectId
 
 import numpy as np
+import pandas as pd
 
 def connnect_and_get_collection(database_name,collection_name):
     client=MongoClient("localhost", 27017)
