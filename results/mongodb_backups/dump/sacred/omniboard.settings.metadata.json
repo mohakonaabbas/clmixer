@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"}],"uuid":"bbc7a9b928ad4d5fb92a12c7c908b383","collectionName":"omniboard.settings","type":"collection"}
