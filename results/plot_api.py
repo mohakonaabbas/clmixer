@@ -267,7 +267,7 @@ def formatValuesToPlottyLines(experiments : pd.DataFrame,
         result={"x":x,
            "y": values,
            "mode":'lines+markers',
-            "name":name + "--"+metric}
+            "name":name}
         return result
 
     plots=df.apply(formatter,axis=1)
