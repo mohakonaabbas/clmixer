@@ -5,7 +5,7 @@
     },
     "data": {
         "dataset_name": "nouvel_op",
-        "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/nouvel_op",
+        "data_path": "/home/facto22019/Desktop/Mohamed/PhD/2023/Datasets/curated/nouvel_op",
         "n_experiments": 5,
         "backbone": "dinov2_vits14",
         "scenario": "indus_cil"
@@ -18,7 +18,7 @@
             "type": "adam",
             "weight_decay": 0.0005
         },
-        "batch_size": 32,
+        "batch_size": 16,
         "device": "cuda"
     },
     "human_knowledge": {

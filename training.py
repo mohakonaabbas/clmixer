@@ -23,7 +23,7 @@ ex=Experiment(base_dir=base_dir)
 
 # MongoDB Observer
 from sacred.observers import MongoObserver
-ex.observers.append(MongoObserver.create(url='127.0.0.1:27017', db_name='experiments_representation_fixed'))
+ex.observers.append(MongoObserver.create(url='127.0.0.1:27017', db_name='experiments_representations'))
 from typing import Union
 
 # Register the json pickle
@@ -193,7 +193,6 @@ class Trainer:
                                                 "out_dimension":self.config["model"]["hidden_size"],
                                                 "device":torch.device("cuda" if torch.cuda.is_available() else "cpu")})
 
-        
         #Optimisation related
         self.storage.batch_size=self.config["optimisation"]["batch_size"]
         self.storage.device=self.config["optimisation"]["device"]

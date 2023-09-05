@@ -5,7 +5,7 @@
     },
     "data": {
         "dataset_name": "mvtec",
-        "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/mvtec",
+        "data_path": "/home/facto22019/Desktop/Mohamed/PhD/2023/Datasets/curated/mvtec",
         "n_experiments": 5,
         "backbone": "resnet18",
         "scenario": "indus_cil"
@@ -18,7 +18,7 @@
             "type": "adam",
             "weight_decay": 0.0005
         },
-        "batch_size": 32,
+        "batch_size": 16,
         "device": "cuda"
     },
     "human_knowledge": {

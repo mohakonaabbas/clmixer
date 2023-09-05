@@ -59,21 +59,20 @@ class ExpandableNet(nn.Module):
         self.hidden_dims=hidden_dims
 
 
-
-
         self.remove_last_relu = True
         self.use_bias = use_bias
         self.reuse_oldfc=True
 
         self.weight_normalization=weight_normalization
 
-        print("Enable dynamical reprensetation expansion!")
+        print("Enable dynamical representation expansion!")
         self.nets = nn.ModuleList()
         
-        self.nets.append(
+        self.nets.append(self.maybeToMultipleGpu(
             factory.get_net(self.netType,**{"input_dim":self.input_dim,
-                 "out_dimension":self.out_dimension}))
-        self.out_dim = self.nets[0].out_dim
+                 "out_dimension":self.out_dimension})))
+        self.out_dim = self.out_dimension
+ 
         
         self.classifier = None
         self.aux_classifier = None
@@ -162,7 +161,7 @@ class ExpandableNet(nn.Module):
             old_weight_shape=weight.shape
             fc.weight.data[old_task_classes, :old_weight_shape[1]] = weight[old_task_classes,:]
         del self.classifier
-        self.classifier = fc
+        self.classifier = self.maybeToMultipleGpu(fc)
 
     def _add_classes_multi_backbone(self):
         if self.ntask >= 1:
@@ -171,7 +170,7 @@ class ExpandableNet(nn.Module):
                                        "out_dimension":self.out_dimension}).to(self.device)
 
             new_clf.load_state_dict(self.nets[-1].state_dict())
-            self.nets.append(new_clf)
+            self.nets.append(self.maybeToMultipleGpu(new_clf))
 
 
     def _add_classes_single_fc(self, n_classes):
@@ -201,3 +200,9 @@ class ExpandableNet(nn.Module):
                 nn.init.constant_(classifier.bias, 0.0)
 
         return classifier
+
+    def maybeToMultipleGpu(self,module):
+        if torch.cuda.device_count()>1:
+            module = torch.nn.DataParallel(module, device_ids=range(torch.cuda.device_count())) # counts the gpu & performs data parallel if  > 1 gpu
+        return module
+

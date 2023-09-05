@@ -21,7 +21,7 @@
       "type": "adam",
       "weight_decay": 0.0005
     },
-    "batch_size": 32,
+    "batch_size": 16,
     "device": "cuda"
   },
   "human_knowledge": {
