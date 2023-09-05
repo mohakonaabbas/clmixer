@@ -50,7 +50,7 @@ def generate_save_conditions_experiments(experiment_name,
 
     conversion_dict={'Repr_Free':[(free_representation_choices,free_representation_backbones)]
                     ,'Repr_Fixed':[(fixed_representation_choices,fixed_representation_backbones)],
-                    'Incorporation': [plugins_dict['CrossEntropyOperation']],
+                    'Incorporation': [plugins_dict['CrossEntropyOperation'],plugins_dict['MSEOperation']],
                     'Retention':[None, plugins_dict['KnowledgeDistillationOperation']],
                     'Bias':[None,plugins_dict['FinetuneOperation'],plugins_dict['WeightAlignOperation'] ],
                     'Uncertainty' : [None,plugins_dict['DirichletUncertaintyLossOperation'] ]}

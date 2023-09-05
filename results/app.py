@@ -55,10 +55,10 @@ app.layout = html.Div([
                 options=labels["uncertainty"], value=labels["uncertainty"],inline=True,
                 id='uncertain'
             )]),
-                    html.Div([html.Label("Metrics",htmlFor='metric'),
+                    html.Div([html.Label("Incorporation",htmlFor='incorp'),
                       dcc.Checklist(
-                options=metrics, value=metrics,inline=True,
-                id='metric'
+                options=labels["incorporation"], value=labels["incorporation"],inline=True,
+                id='incorp'
             )])
             ])],className="parameter_div"),
     html.Div([html.H2("Live filtered plot"),
@@ -76,14 +76,14 @@ app.layout = html.Div([
     Input('knowretention', 'value'),
     Input('bias', 'value'),
     Input('uncertain', 'value'),
-    Input('metric', 'value'))
+    Input('incorp', 'value'))
 def update_graph(dataset,
                  scenario,
                  backbone, 
                  archi,
                  knowretention,
                  bias,
-                 uncertain,metrics):
+                 uncertain,incorporation):
     
     filter_dict={}
     filter_dict["dataset"]=dataset
@@ -93,6 +93,7 @@ def update_graph(dataset,
     filter_dict["retention"]=knowretention
     filter_dict["bias"]=bias
     filter_dict["uncertainty"]=uncertain
+    filter_dict["incorporation"]=incorporation
 
     print(filter_dict)
     plots=[]
@@ -117,14 +118,14 @@ def update_graph(dataset,
     Input('knowretention', 'value'),
     Input('bias', 'value'),
     Input('uncertain', 'value'),
-    Input('metric', 'value'))
+    Input('incorp', 'value'))
 def update_graph_2(dataset,
                  scenario,
                  backbone, 
                  archi,
                  knowretention,
                  bias,
-                 uncertain,metrics):
+                 uncertain,incorporation):
     
     filter_dict={}
     filter_dict["dataset"]=dataset
@@ -134,6 +135,7 @@ def update_graph_2(dataset,
     filter_dict["retention"]=knowretention
     filter_dict["bias"]=bias
     filter_dict["uncertainty"]=uncertain
+    filter_dict["incorporation"]=incorporation
 
     print(filter_dict)
     plots=[]

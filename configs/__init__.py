@@ -1,3 +1,4 @@
 from .conditions_experiments import generate_save_conditions_experiments
+from .conditions_experiments_free import generate_save_conditions_experiments as generate_save_conditions_experiments_free
 from .generate_exp_sh import generate_sh_script
 __all__=[generate_save_conditions_experiments,generate_sh_script]
