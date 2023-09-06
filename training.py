@@ -95,17 +95,17 @@ class Trainer:
                 self.writer.add_scalar("loss/train",loss_value,last_ending_epoch+epoch)
                 self.after_training_epoch(self.plugins)
 
-                # print("Start Evaluation >>>")
-                self.eval('val', self.val_dataloader, exp, _run, compute_metric=False)  # On val data
-                self.writer.add_scalar("loss/val", self.storage.eval_loss, last_ending_epoch + epoch)
+                # # print("Start Evaluation >>>")
+                # self.eval('val', self.val_dataloader, exp, _run, compute_metric=False)  # On val data
+                # self.writer.add_scalar("loss/val", self.storage.eval_loss, last_ending_epoch + epoch)
                 
                 # print("End Evaluation <<<")
-                if self.early_stopper.early_stop(self.storage.eval_loss):
-                    print("Stopping the learning due to early stopping based on val loss")
-                    break
-                # if self.early_stopper.early_stop(loss_value):
-                #     print("Stopping the learning due to early stopping based on train loss")
+                # if self.early_stopper.early_stop(self.storage.eval_loss):
+                #     print("Stopping the learning due to early stopping based on val loss")
                 #     break
+                if self.early_stopper.early_stop(loss_value):
+                    print("Stopping the learning due to early stopping based on train loss")
+                    break
             last_ending_epoch+=epoch
 
                 # self.epochMetric.update({"y":targets,"y_pred":self.storage.logits}) # Compute with the last batch a proxy of epoch Confusion Matrix

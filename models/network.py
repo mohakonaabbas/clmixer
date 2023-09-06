@@ -210,7 +210,7 @@ class ExpandableNet(nn.Module):
         return classifier
 
     def maybeToMultipleGpu(self, module):
-        return module
+        # return module
         if torch.cuda.device_count()>1:
             module = torch.nn.DataParallel(module, device_ids=range(2)) # counts the gpu & performs data parallel if  > 1 gpu
         return module
