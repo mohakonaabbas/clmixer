@@ -47,7 +47,8 @@ class Storage:
         self.confusion_matrix={'train':{},'val':{}}
 
         # LOsses
-        self.loss=0.0
+        self.loss = 0.0
+        self.val_loss=10000000.0
 
         # OPtimizer
         self.optimizer=None

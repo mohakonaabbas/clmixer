@@ -4,7 +4,7 @@ from torch.nn import functional as F
 # DONE
 class CrossEntropyOperation(Operation):
     def __init__(self,
-                 entry_point ="before_backward",
+                 entry_point =["before_backward","after_eval_forward"],
                   inputs=None,
                 callback=(lambda x:x), 
                 paper_ref="",

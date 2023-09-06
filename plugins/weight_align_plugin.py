@@ -23,14 +23,15 @@ class WeightAlignOperation(Operation):
     def wa_callback(self):
 
 
-        try:
-            assert self.inputs.old_logits is not None
-        except AssertionError :
-            return self.inputs
+        
         
         # wa=WA()
 
-        if self.inputs.stage_name=="after_eval_forward":
+        if self.inputs.stage_name == "after_eval_forward":
+            try:
+                assert self.inputs.old_logits is not None
+            except AssertionError :
+                return self.inputs
             #Apply WA transform on data
             self.inputs.logits=self.wa.post_process(self.inputs.logits,self.inputs.seen_classes_mask)
             

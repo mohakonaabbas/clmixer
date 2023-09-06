@@ -37,7 +37,7 @@ def checkExperimentsExistence(config_name, collection) -> bool:
     else: return False
 
 def generate_sh_script(path,savingDatabase=None):
-    files=["#!/usr/bin/env bash\n\n","cd \"/home/mohamedphd/Documents/phd/clmixer\"\n"]
+    files=["#!/usr/bin/env bash\n\n","cd \"/home/facto22019/Desktop/Mohamed/PhD/2023/clmixer\"\n"]
     savepath=path+'.sh'
     config_files=os.listdir(path)
     for config_file in config_files:

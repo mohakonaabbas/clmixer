@@ -70,8 +70,13 @@ class ExpandableNet(nn.Module):
         
         self.nets.append(self.maybeToMultipleGpu(
             factory.get_net(self.netType,**{"input_dim":self.input_dim,
-                 "out_dimension":self.out_dimension})))
-        self.out_dim = self.out_dimension
+                 "out_dimension": self.out_dimension})))
+                 
+        
+        try:
+            self.out_dim = self.nets[0].out_dim
+        except:
+            self.out_dim = self.nets[0].module.out_dim
  
         
         self.classifier = None
@@ -149,9 +154,12 @@ class ExpandableNet(nn.Module):
         self.n_classes = n_classes
 
     def _add_classes_multi_fc(self, current_task_classes, old_task_classes):
-
+        
         if self.classifier is not None:
-            weight = copy.deepcopy(self.classifier.weight.data)
+            if isinstance(self.classifier, torch.nn.DataParallel):
+                weight = copy.deepcopy(self.classifier.module.weight.data)
+            else:
+                weight = copy.deepcopy(self.classifier.weight.data)
 
 
         fc = self._gen_classifier(self.out_dim * len(self.nets), len(current_task_classes))
@@ -201,8 +209,9 @@ class ExpandableNet(nn.Module):
 
         return classifier
 
-    def maybeToMultipleGpu(self,module):
+    def maybeToMultipleGpu(self, module):
+        return module
         if torch.cuda.device_count()>1:
-            module = torch.nn.DataParallel(module, device_ids=range(torch.cuda.device_count())) # counts the gpu & performs data parallel if  > 1 gpu
+            module = torch.nn.DataParallel(module, device_ids=range(2)) # counts the gpu & performs data parallel if  > 1 gpu
         return module
 

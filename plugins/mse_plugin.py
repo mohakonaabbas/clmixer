@@ -5,7 +5,7 @@ import torch
 # DONE
 class MSEOperation(Operation):
     def __init__(self,
-                 entry_point ="before_backward",
+                 entry_point =["before_backward","after_eval_forward"],
                   inputs=None,
                 callback=(lambda x:x), 
                 paper_ref="",
@@ -37,6 +37,7 @@ class MSEOperation(Operation):
 
         if reduction =="none":
             return loss
-        self.inputs.loss+=loss_coeff*loss
+        self.inputs.loss += loss_coeff * loss
+        # print(self.inputs.loss.item)
         return self.inputs
 #

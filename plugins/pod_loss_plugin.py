@@ -3,7 +3,7 @@ from losses.distillation import pod
 
 class PodLossOperation(Operation):
     def __init__(self,
-                 entry_point ="before_backward",
+                 entry_point =["before_backward","after_eval_forward"],
                 inputs={},
             callback=(lambda x:x), 
             paper_ref="https://arxiv.org/pdf/2004.13513.pdf",

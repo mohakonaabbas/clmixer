@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
 
-cd "/home/mohamedphd/Documents/phd/clmixer"
-python3 training.py with "/home/facto22019/Desktop/Mohamed/PhD/2023/clmixer/configs/IL_Experiments_Repr_Free/resnet18_None_dagm_indus_cil_CrossEntropyOperation_None_None_None.json" -D -p -n "resnet18_None_dagm_indus_cil_CrossEntropyOperation_None_None_None" --force
-python3 training.py with "/home/facto22019/Desktop/Mohamed/PhD/2023/clmixer/configs/IL_Experiments_Repr_Free/dinov2_vits14_None_mvtec_indus_cil_CrossEntropyOperation_None_None_None.json" -D -p -n "dinov2_vits14_None_mvtec_indus_cil_CrossEntropyOperation_None_None_None" --force
-python3 training.py with "/home/facto22019/Desktop/Mohamed/PhD/2023/clmixer/configs/IL_Experiments_Repr_Free/dinov2_vits14_None_kth_indus_cil_CrossEntropyOperation_None_None_None.json" -D -p -n "dinov2_vits14_None_kth_indus_cil_CrossEntropyOperation_None_None_None" --force
-python3 training.py with "/home/facto22019/Desktop/Mohamed/PhD/2023/clmixer/configs/IL_Experiments_Repr_Free/dinov2_vits14_None_nouvel_op_cil_CrossEntropyOperation_None_None_None.json" -D -p -n "dinov2_vits14_None_nouvel_op_cil_CrossEntropyOperation_None_None_None" --force
-python3 training.py with "/home/facto22019/Desktop/Mohamed/PhD/2023/clmixer/configs/IL_Experiments_Repr_Free/dinov2_vits14_None_easy_indus_cil_CrossEntropyOperation_None_None_None.json" -D -p -n "dinov2_vits14_None_easy_indus_cil_CrossEntropyOperation_None_None_None" --force
-python3 training.py with "/home/facto22019/Desktop/Mohamed/PhD/2023/clmixer/configs/IL_Experiments_Repr_Free/dinov2_vits14_None_dagm_cil_CrossEntropyOperation_None_None_None.json" -D -p -n "dinov2_vits14_None_dagm_cil_CrossEntropyOperation_None_None_None" --force
-python3 training.py with "/home/facto22019/Desktop/Mohamed/PhD/2023/clmixer/configs/IL_Experiments_Repr_Free/resnet18_None_nouvel_op_indus_cil_CrossEntropyOperation_None_None_None.json" -D -p -n "resnet18_None_nouvel_op_indus_cil_CrossEntropyOperation_None_None_None" --force
+cd "/home/facto22019/Desktop/Mohamed/PhD/2023/clmixer"
 python3 training.py with "/home/facto22019/Desktop/Mohamed/PhD/2023/clmixer/configs/IL_Experiments_Repr_Free/resnet18_None_magnetic_indus_cil_CrossEntropyOperation_None_None_None.json" -D -p -n "resnet18_None_magnetic_indus_cil_CrossEntropyOperation_None_None_None" --force
 python3 training.py with "/home/facto22019/Desktop/Mohamed/PhD/2023/clmixer/configs/IL_Experiments_Repr_Free/resnet18_None_dagm_cil_CrossEntropyOperation_None_None_None.json" -D -p -n "resnet18_None_dagm_cil_CrossEntropyOperation_None_None_None" --force
 python3 training.py with "/home/facto22019/Desktop/Mohamed/PhD/2023/clmixer/configs/IL_Experiments_Repr_Free/dinov2_vits14_None_magnetic_cil_CrossEntropyOperation_None_None_None.json" -D -p -n "dinov2_vits14_None_magnetic_cil_CrossEntropyOperation_None_None_None" --force

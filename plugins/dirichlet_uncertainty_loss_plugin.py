@@ -6,7 +6,7 @@ from losses.distillation import dirichlet_uncertain
 
 class DirichletUncertaintyLossOperation(Operation):
     def __init__(self, 
-                entry_point ="before_backward",
+                entry_point =["before_backward","after_eval_forward"],
                 inputs={},
                 callback=(lambda x:x), 
                 paper_ref="https://arxiv.org/pdf/1806.01768.pdf",

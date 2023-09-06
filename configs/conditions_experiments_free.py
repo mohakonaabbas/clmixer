@@ -23,12 +23,12 @@ def generate_save_conditions_experiments(experiment_name,
     # uncertainty_reduction=["None","dirichlet","conformal"]
 
 
-    paths=["/home/mohamedphd/Documents/phd/Datasets/curated/kth",
-            "/home/mohamedphd/Documents/phd/Datasets/curated/magnetic",
-            "/home/mohamedphd/Documents/phd/Datasets/curated/mvtec",
-            "/home/mohamedphd/Documents/phd/Datasets/curated/dagm",
-            "/home/mohamedphd/Documents/phd/Datasets/curated/easy",
-            "/home/mohamedphd/Documents/phd/Datasets/curated/nouvel_op"]
+    paths=["/home/facto22019/Desktop/Mohamed/PhD/2023/Datasets/curated/kth",
+            "/home/facto22019/Desktop/Mohamed/PhD/2023/Datasets/curated/magnetic",
+            "/home/facto22019/Desktop/Mohamed/PhD/2023/Datasets/curated/mvtec",
+            "/home/facto22019/Desktop/Mohamed/PhD/2023/Datasets/curated/dagm",
+            "/home/facto22019/Desktop/Mohamed/PhD/2023/Datasets/curated/easy",
+            "/home/facto22019/Desktop/Mohamed/PhD/2023/Datasets/curated/nouvel_op"]
 
 
     

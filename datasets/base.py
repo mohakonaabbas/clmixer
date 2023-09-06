@@ -355,24 +355,32 @@ class BaseDataset(torch.utils.data.Dataset):
         path=self.activated_files_subset[idx]
 
         # Manage the folder to keep embeddings
-        embedding_path=path.replace('data',self.default_embedding_location)
+        embedding_path = path.replace('data', self.default_embedding_location)
+        
         _,extension=os.path.splitext(path)
         embedding_path=embedding_path.replace(extension,".pt")
         embedding_path_folder=os.path.dirname(embedding_path)
-        if not os.path.exists(embedding_path_folder) : os.makedirs(embedding_path_folder)
+        if not os.path.exists(embedding_path_folder): os.makedirs(embedding_path_folder)
+        
+       
 
         try:
             #Try to use the embeddings
+            
             x=self.buffer_x[path][0]
-            y=self.buffer_x[path][1]
+            y = self.buffer_x[path][1]
+            #print("Using preloaded backbone")
             
         except:
             # Try to load the embeddings
             if os.path.exists(embedding_path):
+                
                 x=torch.load(embedding_path)
-                lbl=self.Y[self.files.index(path)]
+                lbl = self.Y[self.files.index(path)]
+                # print("Using pre saved bacbkone from disk again")
                 
             else:
+                # print("Using backbone again")
                 
                 img=cv2.imread(path)
                 if img is None:
@@ -464,7 +472,8 @@ class simpleDataset(torch.utils.data.Dataset):
         default_embedding_location=f"embeddings/{self.predictor.backbone_name}"
 
         # Manage the folder to keep embeddings
-        embedding_path=path.replace('data',default_embedding_location)
+        embedding_path = path.replace('data', default_embedding_location)
+        
         _,extension=os.path.splitext(path)
         embedding_path=embedding_path.replace(extension,".pt")
         
@@ -478,6 +487,7 @@ class simpleDataset(torch.utils.data.Dataset):
             x=self.predictor.predict(img)
             #Save it in the embedding folder
             if self.predictor.backbone_name != "None":
+               
                 torch.save(x.detach().cpu(),embedding_path)
         
             # y=torch.tensor(lbl,dtype=torch.long)

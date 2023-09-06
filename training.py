@@ -53,7 +53,8 @@ class Trainer:
 
         self.epochMetric=metrics.ConfusionMatrix(scope='epoch')
         self.taskMetric=metrics.ConfusionMatrix(scope="task")
-        self.writer=SummaryWriter()
+        self.writer = SummaryWriter()
+        self.early_stopper= metrics.EarlyStopper(patience=500,min_delta_percentage=0.005)
         
         print("Trainer initialized ! ")
     
@@ -66,14 +67,17 @@ class Trainer:
         self.before_training(self.plugins)
 
         #Step the dataloader
-
+        last_ending_epoch=0
         for exp in range(self.storage.nbrs_experiments):
             self.storage.current_network.train()
             self.storage=self.before_training_exp(self.plugins)
             self.storage=self.before_train_dataset_adaptation(self.plugins)
             self.storage=self.after_train_dataset_adaptation(self.plugins)
             # cm=[]
+            
             for epoch in tqdm(range(self.storage.epochs)):
+                counter = 1  # Counter to compute avg loss
+                loss_accu=0.0
                 self.before_training_epoch(self.plugins)
                 
                 for inputs,targets in self.storage.dataloader:
@@ -84,8 +88,25 @@ class Trainer:
                     self.before_training_iteration(self.plugins)
                     self.during_training_iteration(self.plugins)
                     self.after_training_iteration(self.plugins)
-                self.writer.add_scalar("loss/train",self.storage.loss.item(),exp*self.storage.epochs+epoch)
+                    counter += 1
+                    loss_accu+=self.storage.loss
+                
+                loss_value=loss_accu/counter if isinstance(loss_accu,float) else loss_accu.item()/counter
+                self.writer.add_scalar("loss/train",loss_value,last_ending_epoch+epoch)
                 self.after_training_epoch(self.plugins)
+
+                # print("Start Evaluation >>>")
+                self.eval('val', self.val_dataloader, exp, _run, compute_metric=False)  # On val data
+                self.writer.add_scalar("loss/val", self.storage.eval_loss, last_ending_epoch + epoch)
+                
+                # print("End Evaluation <<<")
+                if self.early_stopper.early_stop(self.storage.eval_loss):
+                    print("Stopping the learning due to early stopping based on val loss")
+                    break
+                # if self.early_stopper.early_stop(loss_value):
+                #     print("Stopping the learning due to early stopping based on train loss")
+                #     break
+            last_ending_epoch+=epoch
 
                 # self.epochMetric.update({"y":targets,"y_pred":self.storage.logits}) # Compute with the last batch a proxy of epoch Confusion Matrix
                 # Log the metrics and flush it
@@ -102,9 +123,9 @@ class Trainer:
             # Flush the buffer
             self.storage.dataloader.dataset.buffer_x={}
             #self.eval('train',self.storage.dataloader,exp) # On train data
-            print("Start Evaluation >>>")
-            self.eval('val',self.val_dataloader,exp,_run) # On val data
-            print("End Evaluation <<<")
+            self.eval('val', self.val_dataloader, exp, _run, compute_metric=True)
+            self.early_stopper.reset()
+            
             
         
         self.after_training(self.plugins)
@@ -113,27 +134,50 @@ class Trainer:
    
         return self.storage
 
-    def eval(self,type, dataloader,exp,_run):
+    def eval(self,type, dataloader,exp,_run,compute_metric=False):
          # Eval the network
         self.storage=self.before_eval(self.plugins)
         self.storage=self.before_eval_exp(self.plugins)
         self.storage=self.before_eval_dataset_adaptation(self.plugins)
-        self.storage=self.after_eval_dataset_adaptation(self.plugins)
-       
-        for inputs,targets in dataloader:
-            targets=targets.to(self.storage.device)
-            inputs=inputs.to(self.storage.device)
-            self.storage.targets=targets # torch tensor of targets NOT in one hot vector form
-            self.storage.inputs=inputs
-            self.before_eval_iteration(self.plugins)
-            self.before_eval_forward(self.plugins)
-            self.during_eval_forward(self.plugins)
-            self.after_eval_forward(self.plugins)
-            self.after_eval_iteration(self.plugins)
-            self.taskMetric.update({"y":targets,"y_pred":self.storage.logits})
+        self.storage = self.after_eval_dataset_adaptation(self.plugins)
+        
+        counter = 1 # Counter to compute eval loss
+        eval_loss=0.0
 
+        for inputs, targets in dataloader:
+            with torch.no_grad():
+                targets=targets.to(self.storage.device)
+                inputs = inputs.to(self.storage.device)
+                self.storage.targets=targets # torch tensor of targets NOT in one hot vector form
+                self.storage.inputs = inputs
+
+                # Old logits
+                if self.storage.dataloader.dataset.current_experiment>0:
+                   
+
+                    old_output=self.storage.old_network(self.storage.inputs)
+                    self.storage.old_logits=old_output["logits"]  # torch tensor of logits from last experience model
+                    self.storage.old_attentions = old_output["attentions"]
+                    
+                
+                self.before_eval_iteration(self.plugins)
+                self.before_eval_forward(self.plugins)
+                self.during_eval_forward(self.plugins)
+                self.after_eval_forward(self.plugins)
+                eval_loss += self.storage.loss #Loss is being accumulated
+
+                self.after_eval_iteration(self.plugins)
+                self.taskMetric.update({"y": targets, "y_pred": self.storage.logits})
+                counter += 1
+
+        eval_loss = eval_loss / counter  # get the Eval loss
+        self.storage.eval_loss = eval_loss if isinstance(eval_loss, float) else eval_loss.item()
+        
+        if not compute_metric:
+            return self.storage
 
         self.after_eval_exp(self.plugins)
+
         self.storage.confusion_matrix[type].update({exp:self.taskMetric.result['cm'][0]})
         accuracies=metrics.Accuracy().compute(self.storage.confusion_matrix[type])
         # print("Confusion Matrix",self.storage.confusion_matrix[type][exp])
@@ -253,14 +297,34 @@ class Trainer:
                                 split_mode=split_mode,
                                 split_distribution=train_dataset.split_distributions,
                                 label_dict=train_dataset.label_dict)
+
+        initial_bs = self.config["optimisation"]["batch_size"]
+
+        train_N_min_split = min(list(map(len, train_dataset.datasets)))
+        val_N_min_split=min(list(map(len,val_dataset.datasets)))
+        minimal_optim_loop = 3
+        
+        train_optimised_bs = min(initial_bs, train_N_min_split // (minimal_optim_loop))
+        val_optimised_bs = min(initial_bs,  val_N_min_split // (minimal_optim_loop))
+        
+
+        print("Optimised Batch size for training : ", train_optimised_bs)
+        print("Optimised Batch size for testing : ", val_optimised_bs)
+
+        
        
         self.dataloader = data.DataLoader(train_dataset, 
-                                    batch_size=self.config["optimisation"]["batch_size"],
+                                    batch_size=int(train_optimised_bs),
                                     shuffle=True,
                                     drop_last=True)
+
+        # N = sum(val_dataset.counts)
+        # minimal_optim_loop=2
+        # val_optimised_bs = min(initial_bs, N // (n_experiments * minimal_optim_loop))
+        # print("Optimised Batch size for testing : ", val_optimised_bs)
         
         self.val_dataloader = data.DataLoader(val_dataset, 
-                                    batch_size=self.config["optimisation"]["batch_size"],
+                                    batch_size=int(initial_bs),
                                     shuffle=True,
                                     drop_last=False)
         
@@ -390,14 +454,16 @@ class Trainer:
         return self.storage
     
     def after_training_exp(self,plugins : list[Operation]):
-        self.storage=self.build_and_run_relevant_pipeline(stage_name="after_training_exp")
+        
         
         # Update seen classes list
         if self.storage.seen_classes_mask is None:
             self.storage.seen_classes_mask=copy.copy(self.storage.task_mask)
         else:
             for cnt,(old,new )in enumerate(zip(self.storage.seen_classes_mask,self.storage.task_mask)):
-                self.storage.seen_classes_mask[cnt]= old | new 
+                self.storage.seen_classes_mask[cnt] = old | new
+                
+        self.storage=self.build_and_run_relevant_pipeline(stage_name="after_training_exp")
 
         
         self.storage.old_network=self.storage.current_network.copy().freeze() # A non trainable ExpandableNet storing the old weights and biases of last experience training
@@ -413,7 +479,8 @@ class Trainer:
 
      
     def before_eval(self,plugins : list[Operation]):
-        self.storage=self.build_and_run_relevant_pipeline(stage_name="before_eval")
+        self.storage = self.build_and_run_relevant_pipeline(stage_name="before_eval")
+        
         return self.storage
     
  
@@ -433,7 +500,8 @@ class Trainer:
     
  
     def before_eval_iteration(self,plugins : list[Operation]):
-        self.storage=self.build_and_run_relevant_pipeline(stage_name="before_eval_iteration")
+        self.storage = self.build_and_run_relevant_pipeline(stage_name="before_eval_iteration")
+        self.storage.loss=0.0
         return self.storage
     
  
@@ -475,11 +543,13 @@ class Trainer:
     
  
     def after_eval_exp(self,plugins : list[Operation]):
-        self.storage=self.build_and_run_relevant_pipeline(stage_name="after_eval_exp")
+        self.storage = self.build_and_run_relevant_pipeline(stage_name="after_eval_exp")
+        self.storage.loss=0.0
         return self.storage
     
     def after_eval(self,plugins : list[Operation]):
-        self.storage=self.build_and_run_relevant_pipeline(stage_name="after_eval")
+        self.storage = self.build_and_run_relevant_pipeline(stage_name="after_eval")
+        
         return self.storage
     
 

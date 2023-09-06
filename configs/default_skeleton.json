@@ -16,13 +16,13 @@
 
   "optimisation": {
     "lr": 1e-3,
-    "epochs": 500,
+    "epochs": 2000,
     "optimizer": {
       "type": "adam",
       "weight_decay": 0.0005
     },
-    "batch_size": 16,
-    "device": "cuda"
+    "batch_size": 512,
+    "device": "cuda:0"
   },
   "human_knowledge": {
     "nbrs_known_classes": 4,
