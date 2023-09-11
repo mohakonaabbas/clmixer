@@ -199,6 +199,7 @@ def getAllValidExperiments(databaseName : str) -> pd.DataFrame:
     Raises:
     """
     dfValidExperiments=generate_results_experiments(databaseName)
+    dfValidExperiments=compute_weighted_average(dfValidExperiments)
 
 
     return dfValidExperiments
@@ -298,9 +299,79 @@ def getUniqueValues(dfValidExperiments : pd.DataFrame) -> dict:
     items_list=dict(zip(columns,items))
     return items_list
 
+
+def computeDatasetFeatures(dataset_path : str ) -> dict :
+    """
+    Args:
+    Raises:
+    Returns:
+    """
+    import pymfe
+    from pymfe.mfe import MFE
+
+    # Load the files in X and Y
+
+    # Fit the MFE
+
+    # Save the composed dataset
+        saveName=os.path.join(self.saving_folder,"dataset_metafeatures_dict.json")
+        if (os.path.exists(saveName)) and (not force_regeneration):
+            with open(saveName,"r") as f:
+                self.datasetFeatures_dict=json.load(f)
+                ft=[list(self.datasetFeatures_dict.keys()),list(self.datasetFeatures_dict.values())]
+                self.datasetFeatures=ft
+                print("\n".join("{:50}  {:30}".format(x,y) for x,y in zip(ft[0],ft[1])))
+                return
+
+        self.mfe=MFE(groups="all",
+                     summary=["mean"],
+                     features=["ch","sil","vdb","vdu","c1","c2","l3","l2","linear_discr","naive_bayes","elite_nn","p_trace"])
+            
+        self.mfe.fit(self.X,self.Y)
+        ft=self.mfe.extract()
+        print("\n".join("{:50}  {:30}".format(x,y) for x,y in zip(ft[0],ft[1])))
+        self.datasetFeatures=ft
+        self.datasetFeatures_dict=dict(zip(ft[0],ft[1]))
+        with open(os.path.join(self.saving_folder,"dataset_metafeatures_dict.json"),"w") as f:
+            json.dump(self.datasetFeatures_dict,f)
+
+
+    return NotImplementedError
+
+def compute_weighted_average(dataframe : pd.DataFrame) -> pd.DataFrame :
+    """
+    Args:
+    Raises:
+    Returns:
+    """
+    EPSILON=10**-32
+    def wamica(row):
+        mica=row.mica["mica"].values()
+        mica=list(mica)
+        res=np.mean(mica)*(1-EPSILON -np.max(mica)+np.min(mica))
+        return res
+    
+    def waacc(row):
+        acc=row.acc["acc"].values()
+        acc=list(acc)
+        res=np.mean(acc)*(1-EPSILON - np.max(acc)+np.min(acc))
+        return res
+
+
+    wamica_res=dataframe.apply(wamica,axis=1)
+    waac_res=dataframe.apply(waacc,axis=1)
+
+    new_df=pd.concat([dataframe,wamica_res,waac_res],axis=1)
+    names=list(df.columns)+["wamica","waacc"]
+    new_df.columns=names
+    
+    return new_df
+
 if __name__=="__main__":
-    df=getAllValidExperiments(databaseName="experiments_conditions")
+    df=getAllValidExperiments(databaseName="representation_free")
+    df=compute_weighted_average(df)
     labels=getUniqueValues(df)
+
     filter_dict=getFilterTemplate()
     filter_dict["dataset"]=["kth"]
     filter_dict["retention"]="None"

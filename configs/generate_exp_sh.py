@@ -37,9 +37,42 @@ def checkExperimentsExistence(config_name, collection) -> bool:
     else: return False
 
 def generate_sh_script(path,savingDatabase=None):
-    files=["#!/usr/bin/env bash\n\n","cd \"/home/facto22019/Desktop/Mohamed/PhD/2023/clmixer\"\n"]
+    base_path="/home/mohamedphd/Documents/phd/"
+    files=["#!/usr/bin/env bash\n\n",
+           "cd \"/home/mohamedphd/Documents/phd/clmixer\"\n"]
     savepath=path+'.sh'
     config_files=os.listdir(path)
+
+
+
+    launch_preference_order={'easy':1,"kth":3,"nouvelop":2,"mvtec":4,"dagm":5,"magnetic":6,"dagm":7}
+    config_files=sorted(config_files)
+    temp=[]
+    positions=[]
+    
+
+    def first_true(iterable, default=False, pred=None):
+        """Returns the first true value in the iterable.
+
+        If no true value is found, returns *default*
+
+        If *pred* is not None, returns the first item
+        for which pred(item) is true.
+
+        """
+        # first_true([a,b,c], x) --> a or b or c or x
+        # first_true([a,b], x, f) --> a if f(a) else b if f(b) else x
+        return list(filter(pred, iterable))
+    
+    for dataset in launch_preference_order.keys():
+        values=first_true(config_files,None,lambda x : dataset in x)
+        temp+=config_files[config_files.index(values[0]):config_files.index(values[-1])+1]
+
+    # sorted_positions=sorted(positions)
+    config_files=temp
+
+
+    # config_files=sorted(config_files,key=lambda x :launch_preference_order[x.split("_")[0]])
     for config_file in config_files:
         abspath=os.path.abspath(os.path.join(path,config_file))
 
@@ -52,6 +85,7 @@ def generate_sh_script(path,savingDatabase=None):
             
         command=f"python3 training.py with \"{abspath}\" -D -p -n \"{config_file[:-5]}\" --force\n"
         files.append(command)
+    # files=sorted(files,key=lambda x :x.split("_")[0])
     
     with open(savepath,'w') as f:
         f.writelines(files)

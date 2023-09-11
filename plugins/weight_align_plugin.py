@@ -32,13 +32,25 @@ class WeightAlignOperation(Operation):
                 assert self.inputs.old_logits is not None
             except AssertionError :
                 return self.inputs
+            
+            
+            old_mask=self.inputs.seen_classes_mask
+            new_mask=[]
+            for old,new in zip(old_mask,self.inputs.task_mask):
+                new_mask.append(old^new)
+            
             #Apply WA transform on data
-            self.inputs.logits=self.wa.post_process(self.inputs.logits,self.inputs.seen_classes_mask)
+            self.inputs.logits=self.wa.post_process(self.inputs.logits,new_mask)
             
         elif self.inputs.stage_name=="after_training_exp":
             network=self.inputs.current_network
-            task_mask=self.inputs.seen_classes_mask
-            result=self.wa.update(network.classifier,task_mask)
+
+            new_mask=[]
+            for old,new in zip(self.inputs.seen_classes_mask,self.inputs.task_mask):
+                new_mask.append(old^new)
+            
+            # task_mask=self.inputs.seen_classes_mask
+            self.wa.update(network.classifier,self.inputs.seen_classes_mask,new_mask)
 
             self.inputs.plugins_storage[self.name].update({"gamma":self.wa.gamma}
     )

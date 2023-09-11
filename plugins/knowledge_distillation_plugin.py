@@ -15,7 +15,7 @@ class KnowledgeDistillationOperation(Operation):
         self.set_config_template({
       "name": self.__class__.__name__,
       "hyperparameters": {
-        "temperature": 2
+        "temperature": 2.0
       },
       "function": "knowledge_retention"
     })

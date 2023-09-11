@@ -30,7 +30,7 @@ for module in modules:
     plugins_list +=cls
 
 plugins_dict=dict(plugins_list)
-print("Avalaible plugins are :\n","\n".join(list(plugins_dict.keys())))
+# print("Avalaible plugins are :\n","\n".join(list(plugins_dict.keys())))
 __all__=[plugins_dict,Operation,EntryPoints]
 def return_plugin(name):
     return plugins_dict[name]

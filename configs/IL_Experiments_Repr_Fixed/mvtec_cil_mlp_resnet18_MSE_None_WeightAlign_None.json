@@ -1,0 +1,47 @@
+{
+    "model": {
+        "model_type": "mlp",
+        "hidden_size": 20
+    },
+    "data": {
+        "dataset_name": "mvtec",
+        "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/mvtec",
+        "n_experiments": 5,
+        "backbone": "resnet18",
+        "scenario": "cil"
+    },
+    "seed": 31101994,
+    "optimisation": {
+        "lr": 0.001,
+        "epochs": 1000,
+        "optimizer": {
+            "type": "adam",
+            "weight_decay": 0.0005
+        },
+        "batch_size": 32,
+        "device": "cuda"
+    },
+    "human_knowledge": {
+        "nbrs_known_classes": 4,
+        "classes_simmilary": []
+    },
+    "plugins": [
+        {
+            "name": "RandomMemoryUpdaterOperation",
+            "hyperparameters": {
+                "cls_budget": 10
+            },
+            "function": "knowledge_retention"
+        },
+        {
+            "name": "MSEOperation",
+            "hyperparameters": {},
+            "function": "knowledge_incorporation"
+        },
+        {
+            "name": "WeightAlignOperation",
+            "hyperparameters": {},
+            "function": "bias_mitigation"
+        }
+    ]
+}

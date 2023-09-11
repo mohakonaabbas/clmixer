@@ -21,14 +21,15 @@ def generate_save_conditions_experiments(experiment_name,
     # knowledge_retention=["None","KD",'Dynamic Arch',"big buffer"]
     # Bias_Mitigation=["None","wa","bic","finetuning"]
     # uncertainty_reduction=["None","dirichlet","conformal"]
+    base_path="/home/mohamedphd/Documents/phd/"
 
 
-    paths=["/home/facto22019/Desktop/Mohamed/PhD/2023/Datasets/curated/kth",
-            "/home/facto22019/Desktop/Mohamed/PhD/2023/Datasets/curated/magnetic",
-            "/home/facto22019/Desktop/Mohamed/PhD/2023/Datasets/curated/mvtec",
-            "/home/facto22019/Desktop/Mohamed/PhD/2023/Datasets/curated/dagm",
-            "/home/facto22019/Desktop/Mohamed/PhD/2023/Datasets/curated/easy",
-            "/home/facto22019/Desktop/Mohamed/PhD/2023/Datasets/curated/nouvel_op"]
+    paths=[base_path+"Datasets/curated/kth",
+            base_path+"Datasets/curated/magnetic",
+            base_path+"Datasets/curated/mvtec",
+            base_path+"Datasets/curated/dagm",
+            base_path+"Datasets/curated/easy",
+            base_path+"Datasets/curated/nouvel_op"]
 
 
     
@@ -51,9 +52,9 @@ def generate_save_conditions_experiments(experiment_name,
     conversion_dict={'Repr_Free':[(free_representation_choices,free_representation_backbones)]
                     ,'Repr_Fixed':[(fixed_representation_choices,fixed_representation_backbones)],
                     'Incorporation': [plugins_dict['CrossEntropyOperation']],
-                    'Retention':[None],
-                    'Bias':[None],
-                    'Uncertainty' : [None]}
+                    'Retention':[plugins_dict['KnowledgeDistillationOperation']],
+                    'Bias':[plugins_dict['FinetuneOperation']],
+                    'Uncertainty' : [None ]}
 
 
     configs=[]
@@ -94,7 +95,15 @@ def generate_save_conditions_experiments(experiment_name,
                                             unc_name=working_json["plugins"][-1]['name']
                                         
                                         configs.append(working_json)
-                                        name="_".join([model,backbone,path.split("/")[-1],scenario,kn_name,ret_name,bias_name,unc_name])
+                                        # name="_".join([model,backbone,path.split("/")[-1],scenario,kn_name,ret_name,bias_name,unc_name])
+                                        name="_".join([path.split("/")[-1].replace("_",""),
+                                                       scenario.replace("_",""),
+                                                       model.replace("_",""),
+                                                       backbone.replace("_",""),
+                                                       kn_name.replace('Operation',""),
+                                                       ret_name.replace('Operation',""),
+                                                       bias_name.replace('Operation',""),
+                                                       unc_name.replace('Operation',"")])
                                         name=name+".json"
 
 

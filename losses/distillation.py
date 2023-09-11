@@ -147,7 +147,9 @@ def dirichlet_uncertain(y_pred:torch.tensor,
     
     #alpha_tilde=evidence*(1-y)+1
     alp = E*(1-y) + 1 
-    C =  annealing_coef * dirichlet_KLDivergence_loss(alp)
+    # C =  annealing_coef * dirichlet_KLDivergence_loss(alp)
+
+    C =  annealing_coef * dirichlet_KLDivergence_loss(y_pred,y,epoch,kl_annealing_step,type)
 
     loss=A+B+C
     return loss
@@ -278,7 +280,10 @@ def dirichlet_MSE(y_pred:torch.tensor,
     return loss
     
 
-def dirichlet_KLDivergence_loss(alpha):
+def dirichlet_KLDivergence_loss(y_pred:torch.tensor,
+                  y:torch.tensor,
+                  epoch:int,
+                  kl_annealing_step: int):
     """
     This loss compute a KL divergence between a dirichlet and uniform dirichlet
     https://arxiv.org/pdf/1806.01768.pdf
@@ -300,6 +305,22 @@ def dirichlet_KLDivergence_loss(alpha):
         return kl
 
     """
+
+    # Get the shape of the output
+    max_hot=y_pred.shape[-1]
+    #Convert to one hot vector
+    y=torch.nn.functional.one_hot(y,max_hot)
+     #Compute the dirichlet parameters
+    alpha=y_pred+1
+    #Compute evidences
+    E = alpha - 1 #Evidence : the outputs of the neural network
+    #Compute the annealing coeff to give increasing importance to KL divergence
+    annealing_coef = torch.tensor(min(1.0,epoch/kl_annealing_step))
+    annealing_coef=annealing_coef.to(y_pred.device)
+    
+    #alpha_tilde=evidence*(1-y)+1
+    alpha = E*(1-y) + 1 
+
     #Get the number of classes
     K=alpha.shape[-1]
     #Get the uniform distribution

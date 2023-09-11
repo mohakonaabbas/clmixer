@@ -23,7 +23,7 @@ ex=Experiment(base_dir=base_dir)
 
 # MongoDB Observer
 from sacred.observers import MongoObserver
-ex.observers.append(MongoObserver.create(url='127.0.0.1:27017', db_name='experiments_representations'))
+ex.observers.append(MongoObserver.create(url='127.0.0.1:27017', db_name='representation_free'))
 from typing import Union
 
 # Register the json pickle
@@ -314,7 +314,7 @@ class Trainer:
         
        
         self.dataloader = data.DataLoader(train_dataset, 
-                                    batch_size=int(train_optimised_bs),
+                                    batch_size=initial_bs,
                                     shuffle=True,
                                     drop_last=True)
 
@@ -324,7 +324,7 @@ class Trainer:
         # print("Optimised Batch size for testing : ", val_optimised_bs)
         
         self.val_dataloader = data.DataLoader(val_dataset, 
-                                    batch_size=int(initial_bs),
+                                    batch_size=initial_bs,
                                     shuffle=True,
                                     drop_last=False)
         

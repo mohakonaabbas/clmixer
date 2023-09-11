@@ -4,5 +4,5 @@ dirpath_fixed=generate_save_conditions_experiments(experiment_name="IL_Experimen
                                              representation=['Repr_Fixed'])
 dirpath_free=generate_save_conditions_experiments_free(experiment_name="IL_Experiments_Repr_Free",
                                              representation=['Repr_Free'])
-generate_sh_script(path=dirpath_fixed,savingDatabase="experiments_representations")
-generate_sh_script(path=dirpath_free,savingDatabase="experiments_representations")
+generate_sh_script(path=dirpath_fixed,savingDatabase="representation_free")
+generate_sh_script(path=dirpath_free,savingDatabase="representation_free")

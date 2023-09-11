@@ -111,17 +111,17 @@ class WA(object):
         self.gamma = None
 
     @torch.no_grad()
-    def update(self, classifier, task_mask):
+    def update(self, classifier, old_mask,new_mask):
         """
         Task_mask masks out the newly introduced task classes. This can includes old classes.
         """
         EPSILON=1e-32
-        old_mask = task_mask
+        # old_mask = task_mask
         if min(old_mask) == True:
             self.gamma = 1.0
             return self.gamma
 
-        new_mask = list(map(lambda x: not x, task_mask))
+        # new_mask = list(map(lambda x: not x, task_mask))
         try:
             old_weight_norm = torch.norm(classifier.weight[old_mask], p=2, dim=1)
             new_weight_norm = torch.norm(classifier.weight[new_mask], p=2, dim=1)
@@ -132,7 +132,7 @@ class WA(object):
        
        
     @torch.no_grad()
-    def post_process(self, preds, task_mask):
-        new_mask=[not x for x in task_mask]
+    def post_process(self, preds, new_mask):
+        # new_mask=[not x for x in task_mask]
         preds[:,new_mask] = preds[:, new_mask] * self.gamma
         return preds
