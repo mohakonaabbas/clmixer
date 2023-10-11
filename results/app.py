@@ -12,9 +12,9 @@ external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
 app = Dash(__name__, external_stylesheets=external_stylesheets)
 
-df1 = plot_api.getAllValidExperiments(databaseName="representation_fixed")
-df2 = plot_api.getAllValidExperiments(databaseName="representation_free")
-df = pd.concat([df1,df2]).reset_index(drop=True)
+# df1 = plot_api.getAllValidExperiments(databaseName="representation_fixed")
+df = plot_api.getAllValidExperiments(databaseName="representation_free")
+# df = pd.concat([df1,df2]).reset_index(drop=True)
 labels=plot_api.getUniqueValues(df)
 
 metrics = ["acc",'mica']
