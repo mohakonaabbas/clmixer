@@ -8,6 +8,10 @@ import copy
 from typing import List, Tuple
 from ..storage import Storage
 from .finetune_last_layer_plugin import FinetuneOperation
+from .random_memory_plugin import RandomMemoryUpdaterOperation
+import numpy as np
+from functools import reduce
+from datasets import base
 class LossLandscapeOperation(Operation):
 # class LossLandscapeOperation():
     def __init__(self,
@@ -57,7 +61,6 @@ class LossLandscapeOperation(Operation):
 
         if self.inputs.stage_name == "after_training_exp":
             #Finetune the model
-            
             finetune_operation=FinetuneOperation(inputs=self.inputs)
 
             update={finetune_operation.name:{"hyperparameters":{}}}
@@ -88,13 +91,36 @@ class LossLandscapeOperation(Operation):
            
             
 
-            # Create a new model to approximate the loss landscape
+            # Create a new approximator model to approximate the loss landscape
             approximator=LandScapeModel(input_dim=self.input_shape[0])
             n=self.inputs.plugins_storage[self.name]["hyperparameters"]["n"]
             n=int(n)
+
+            # Create a model reference
+            model_reference=copy.deepcopy(self.inputs.current_network)
+            with torch.no_grad():
+                for p in model_reference.parameters():
+                    p.requires_grad = False
+            model_reference.eval()
+
+            # Create a dataset to test the variation on
+            random_memory_operation=RandomMemoryUpdaterOperation(inputs=self.inputs)
+            X_balanced,y_balanced=random_memory_operation.balanced_random_shuffle(100)
+
+            # Retrain the last layer
+
+            # Assign the memory to the balanced dataset
+
+            loader = data.DataLoader(base.simpleDataset(X=X_balanced,
+                                                        y= y_balanced,
+                                                        predictor=self.inputs.dataloader.dataset.backbone),
+                                                        batch_size=32,
+                                                        shuffle=True)
+            
+
             
             # Expand the dataset by "efficient" high dimensionnal sampling
-            sampler=EfficientSampler(trajectory)
+            sampler=EfficientSampler(trajectory,model_reference,loader)
             X,y=sampler._gen_sample(n)
 
             # TRain it
@@ -174,8 +200,21 @@ class LandScapeModel(nn.Module):
 
 class EfficientSampler:
     def __init__(self,
-                 trajectories : List[List[Tuple]] ):
+                trajectories : List[List[Tuple]],
+                model_reference,
+                loss_evaluation_dataset ):
+        """
+        Args:
+            - trajectories : A list of list. each nested list is composed of tuples of differents trajectories.
+            A typical trajectories is [[finetuned model,loss],[start ... end ]]
+            - model_reference : The model to change during inference
+            - loss_evaluation_dataset : A dataset to evaluate the choices of parameters on
+
+        
+        """
         self.references_trajectories=trajectories
+        self.model_reference= model_reference
+        self.eval_dataset=loss_evaluation_dataset
             
 
     def _gen_sample(self, n):
@@ -191,8 +230,12 @@ class EfficientSampler:
         theta0,theta1,theta2=self.references_trajectories[0][0][0],self.references_trajectories[1][0][0],self.references_trajectories[1][-1][0]
         sampled_parameters= sampling[:,0].reshape(-1,1)*theta0+ sampling[:,1].reshape(-1,1)*theta1+ sampling[:,2].reshape(-1,1)*theta2
         #We need to evaluate these parameters to get their loss now
-        
-        trajectory=self.references_trajectories[0]
+        sampled_trajectories=[]
+        for i in range(n):
+            loss=self.get_parameters_loss(sampled_parameters[i,:],self.model_reference)
+            sampled_trajectories.append((sampled_parameters[i,:],loss.data))
+        self.references_trajectories.append(sampled_trajectories)
+        trajectory=reduce(lambda a, b: a+b, self.references_trajectories)
         X=torch.cat(list(map(lambda x:x[0].reshape(1,-1),trajectory)),axis=0)
         y=torch.cat(list(map(lambda x:x[1].reshape(1,-1),trajectory)),axis=0)
         return X,y
@@ -201,6 +244,34 @@ class EfficientSampler:
         coeffs=torch.rand(n,3)
         coeffs=coeffs/torch.sum(coeffs,dim=1).reshape(-1,1)
         return coeffs
+    
+    def get_parameters_loss(self,parameter,model):
+
+        # Update model parameter
+        start=0
+        for name,param in model.named_parameters():
+                if ("weight" not in name) :
+                    continue
+                shape=param.shape
+                flat_shape=np.prod(param.shape)
+                end=start+flat_shape
+                param.data=parameter[start:start+flat_shape].reshape(shape)
+                param.requires_grad = False
+                start=end
+
+
+        # Test on the data loader
+        count=1
+        loss=0.0
+        for inputs, targets in self.eval_dataset:
+            inputs=inputs.to("cuda:0")
+            targets=targets.to("cuda:0")
+            outputs=model(inputs)
+            loss+=F.cross_entropy(outputs["logits"].softmax(dim=1),targets)
+            count+=1
+        return loss/count
+
+        
 
 class approximatorTrainer:
     def __init__(self,
