@@ -13,7 +13,7 @@
     "seed": 31101994,
     "optimisation": {
         "lr": 0.001,
-        "epochs": 100,
+        "epochs": 1000,
         "optimizer": {
             "type": "adam",
             "weight_decay": 0.0005
@@ -39,7 +39,7 @@
               "approximators": [],
               "current_task_loss_dataset":[],
               "n":1e2,
-              "epochs":100,
+              "epochs":200,
               "bs":32,
               "lr":1e-3
       

@@ -12,6 +12,7 @@ from .random_memory_plugin import RandomMemoryUpdaterOperation
 import numpy as np
 from functools import reduce
 from datasets import base
+
 class LossLandscapeOperation(Operation):
 # class LossLandscapeOperation():
     def __init__(self,
