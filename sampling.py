@@ -245,7 +245,7 @@ def value_imposed_sampler_callback(n : int ,
                             theta_mask : torch.tensor,
                             dataloader_bs : int = 32):
     """
-     Random sampler of parameters
+     SAmpling by optimizing a value sampler of parameters
     """
 
     D=torch.sum(theta_mask).item()

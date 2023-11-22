@@ -43,11 +43,6 @@ class LossLandscapeOperation(Operation):
         """
         Landscape entropy function
         """
-
-        
-
-        
-
         
         if self.inputs.stage_name == "after_backward":
             # Get model current classifier
