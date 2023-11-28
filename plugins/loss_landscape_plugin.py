@@ -11,7 +11,9 @@ from .finetune_last_layer_plugin import FinetuneOperation
 from .random_memory_plugin import RandomMemoryUpdaterOperation
 import numpy as np
 from functools import reduce
+
 from datasets import base
+from utils import sampling,approximators
 
 class LossLandscapeOperation(Operation):
 # class LossLandscapeOperation():

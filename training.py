@@ -376,6 +376,7 @@ class Trainer:
     def before_training_iteration(self,plugins : list[Operation]):
         self.storage=self.build_and_run_relevant_pipeline(stage_name="before_training_iteration")
         self.storage.loss=0.0
+        self.storage.optimizer.zero_grad()
         return self.storage
     
     def during_training_iteration(self,plugins : list[Operation]):
@@ -407,7 +408,7 @@ class Trainer:
         
         self.after_forward(self.plugins)
         self.storage=self.before_backward(self.plugins)
-        self.storage.loss.backward()
+        self.storage.loss.backward(retain_graph=False)
         self.after_backward(self.plugins)
         self.before_update(self.plugins)
         self.storage.optimizer.step()
