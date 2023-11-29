@@ -9,7 +9,8 @@ from torch.utils import data
 from sklearn.model_selection import KFold
 from scipy import stats
 from copy import deepcopy
-
+import warnings
+warnings.filterwarnings("ignore")
 #UTILS
 def extract_parameters(model):
     parameter=[]
@@ -98,7 +99,7 @@ def get_parameters_loss(parameter,
 
 # SCALERS
 
-def Identity(inputs,
+def identity(inputs,
             hyperparameters={}):
     return inputs, hyperparameters
     
@@ -251,7 +252,8 @@ def random_sampler_callback(n : int ,
         rescaled_losses=torch.tensor(rescaled_losses)
     for key,value in rescaling_func_hyperparameters.items():
         if not isinstance(value,torch.Tensor):
-            rescaling_func_hyperparameters[key]=torch.tensor(value)
+            if value is not None:
+                rescaling_func_hyperparameters[key]=torch.tensor(value)
 
 
 
@@ -413,15 +415,15 @@ class EfficientSampler:
         This functions takes in inputs a list of trajectories of training
         And augment it to generate N samples
         """
-        print("AUGMENTATION NOT IMPLEMENTED YET , ")
+        # print("AUGMENTATION NOT IMPLEMENTED YET , ")
 
         #Get a triangle sampling
         results=callback(n=n,
-                               dataloader=self.dataloader,
-                               Phi=self.model_reference,
-                               theta_mask=self.mask,
-                               rescaling_func =rescaling_func,
-                                rescaling_func_hyperparameters=rescaling_func_hyperparameters)
+                        dataloader=self.dataloader,
+                        Phi=self.model_reference,
+                        theta_mask=self.mask,
+                        rescaling_func =rescaling_func,
+                        rescaling_func_hyperparameters=rescaling_func_hyperparameters)
         return results
 
 
@@ -503,18 +505,18 @@ if __name__== "__main__":
     # mask=torch.tensor(mask)>0
     mask=torch.ones(len(mask),dtype=torch.bool)
     sampler=EfficientSampler(dataloader=dataloader,Phi=model,theta_mask=None)
+    
     n=100
 
     # Define the sampler callback
     rescaling_func=minmax
-    
     results=sampler.sample(n,callback=random_sampler_callback,
                            rescaling_func= rescaling_func,
                            rescaling_func_hyperparameters={"mean":None,"std":None,"lambda":None,"min":None,"max":None})
     
-    samples=results["parameters"]
-    scaled_losses=results["rescaled_losses"]
-    losses=results["losses"]
+    anchors=results["parameters"]
+    anchors_losses=results["rescaled_losses"]
+    anchors_raw_losses=results["losses"]
     rescaling_func_hyperparameters=results["rescaling_hyperparameters"]
     
 
@@ -525,50 +527,87 @@ if __name__== "__main__":
     # distances_map=torch.cdist(samples,samples,p=2)
     # plt.imshow(distances_map)
     # plt.show()
-    print("sampled losses",losses.min(),losses.max(),losses.median())
+   
+    from approximators import BasicKernelAprroximator,Epanechnikov_kernel,IdentityKernel,TriangleKernel, active_anchors_choice
 
-    from approximators import BasicKernelAprroximator,Epanechnikov_kernel,IdentityKernel,TriangleKernel
+    approximator=BasicKernelAprroximator(theta_refs=anchors,
+                                         theta_refs_raw_losses=anchors_raw_losses,
+                                         theta_refs_losses=anchors_losses)
 
-    approximator=BasicKernelAprroximator(samples,scaled_losses)
-    # approximator=BasicKernelAprroximator(samples,torch.tensor(xt))
+    #Calibrate this kernel h
+    n_h=100
+    results=sampler.sample(n_h,callback=random_sampler_callback,
+                           rescaling_func= rescaling_func,
+                           rescaling_func_hyperparameters=rescaling_func_hyperparameters)
 
-    # param=optimize_return_parameter(model,dataloader,lr=1e-3,criterion=F.cross_entropy,epochs=10)
+    calibration_samples=results["parameters"]
+    calibration_targets=results["rescaled_losses"]
 
-    N=30
-    D=samples[0].shape[0]
-    test_data=torch.rand((N,D))
 
+    h=approximator.calibrate_h(calibration_samples= calibration_samples , 
+                             calibration_targets= calibration_targets, 
+                             method= "knn", 
+                             method_hyperparameters={"min_nbrs_neigh":5,"kernel":Epanechnikov_kernel})
+
+    # Improve 
+
+    approximator.set_rescaling_parameters(rescaling_func,parameters=rescaling_func_hyperparameters)
+
+    sampler_hyperparameters ={"random_sampler_callback":random_sampler_callback,
+                              "rescaling_func":rescaling_func,
+                              "rescaling_func_hyperparameters":rescaling_func_hyperparameters}
+                          
+
+    approximator=active_anchors_choice(approximator  = approximator,
+                          approximator_hyperparameters = {"kernel":Epanechnikov_kernel},
+                          sampler = sampler,
+                          sampler_hyperparameters =sampler_hyperparameters,
+                          n_anchors_max = 1000,
+                          n_rounds_improve =10,
+                          n_targets_neighboors = 10)
     
+    # Test the prediction
 
-    best_h=1.0
-    old_MAP=1000000000
-    best_l_x=[]
-    best_l_x_hat=[]
-
-    for h in np.linspace(0.5,2,5):
-        l_x=[]
-        l_x_hat=[]
-        MAP=0
-        for i in tqdm(range(N)):
-            param=test_data[i,:]
-            loss_approx=approximator(param,h=h,kernel=Epanechnikov_kernel)
-            loss=get_parameters_loss(parameter=param,model=model,dataloader=dataloader)
-            loss, _= rescaling_func(loss,hyperparameters=rescaling_func_hyperparameters)
-            l_x.append(loss.item())
-            l_x_hat.append(loss_approx.item())
-            MAP+=torch.abs(loss_approx-loss)
-        # print("h",h,"MAP",MAP)
-        if MAP<old_MAP:
-            best_h=h
-            old_MAP=MAP
-            best_l_x=l_x
-            best_l_x_hat=l_x_hat
-    print(best_h)
+    n_test=100
+    results=sampler.sample(n_h,callback=random_sampler_callback,
+                           rescaling_func= rescaling_func,
+                           rescaling_func_hyperparameters=rescaling_func_hyperparameters)
     
-    plt.scatter(best_l_x,best_l_x_hat)
+    test_samples=results["parameters"]
+    test_targets=results["rescaled_losses"]
+
+    test_predictions= approximator(test_samples)
+
+    pred=torch.squeeze(test_predictions).detach().numpy()
+    true=torch.squeeze(test_targets).detach().numpy()
+
+
+    from sklearn import datasets, linear_model
+    from sklearn.metrics import mean_squared_error, r2_score
+
+
+
+    # Create linear regression object
+    regr = linear_model.LinearRegression(fit_intercept=False)
+
+    # Train the model using the training sets
+    regr.fit(true.reshape(-1,1), pred)
+
+    # Make predictions using the testing set
+    line = regr.predict(true.reshape(-1,1))
+
+    coef=regr.coef_
+    r2_= r2_score(pred, line)
+
+    plt.scatter(true,pred)
+    plt.plot(true, line, color="red", linewidth=3)
     plt.grid(True)
-    plt.xlim(1.7,2.4)
-    plt.ylim(1.7,2.4)
+    # plt.xlim(0,5)
+    # plt.ylim(0,5)
+    plt.xlabel(xlabel="true")
+    plt.ylabel(ylabel="pred")
+
+    plt.title(f" slope : {coef} \n R2 : {r2_}")
     plt.show()
     print()
 

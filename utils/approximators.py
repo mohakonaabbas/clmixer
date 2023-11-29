@@ -9,6 +9,7 @@ from torch.utils import data
 from sklearn.model_selection import KFold
 import copy
 from sklearn.neighbors import BallTree
+from sampling import EfficientSampler, identity, box_cox, normal , minmax
 
 def Epanechnikov_kernel(u:torch.tensor):
     """
@@ -27,8 +28,9 @@ def TriangleKernel(u:torch.tensor):
 
 class BasicKernelAprroximator(nn.Module):
     def __init__(self,
-                theta_refs : torch.tensor,
-                theta_refs_losses : torch.tensor):
+                theta_refs : torch.Tensor,
+                theta_refs_raw_losses : torch.Tensor,
+                theta_refs_losses : torch.Tensor):
         """
         Args:
             - theta_refs : Represent the sampled parameters.
@@ -39,9 +41,16 @@ class BasicKernelAprroximator(nn.Module):
         super().__init__()
 
         
-        self.anchors=theta_refs
-        self.anchors_losses=torch.squeeze(theta_refs_losses)
+        self.anchors=theta_refs # X
+
+        self.anchors_losses=torch.squeeze(theta_refs_losses) # Y
         self.anchors_losses=torch.tensor(self.anchors_losses)
+
+        self.anchors_raw_losses=torch.squeeze(theta_refs_raw_losses)
+        self.anchors_raw_losses=torch.tensor(self.anchors_raw_losses)
+
+        self.h=None
+        self.rescaling_parameters=None
         
         # distances_map=torch.cdist(self.anchors,self.anchors,p=2)
         # mean=torch.mean(distances_map)
@@ -49,10 +58,14 @@ class BasicKernelAprroximator(nn.Module):
         # std=torch.std(torch.flatten(distances_map))
 
 
-    def forward(self, theta,h=100,kernel=Epanechnikov_kernel):
+    def forward(self, theta,h=-1,kernel=Epanechnikov_kernel):
         """
         This functions compute a smoothed loss function for theta
         """
+        if h<0:
+            assert self.h is not None
+            assert self.rescaling_parameters is not None
+        h_=h if h>0 else self.h
         #Compute the norm of theta-anchors
         device=theta.get_device()
         if device>0:
@@ -62,22 +75,26 @@ class BasicKernelAprroximator(nn.Module):
         anchors=copy.deepcopy(self.anchors).to(device)
         anchors_losses=copy.deepcopy(self.anchors_losses).to(device)
 
-        norms=torch.norm(anchors-theta,dim=1)/h
+        w_shape=theta.shape
+
+        w_theta=torch.reshape(theta,(w_shape[0],1,w_shape[1]))
+
+        norms=torch.norm(anchors-w_theta,dim=2)/h_
         K_i=kernel(norms)
-        K_y_i=anchors_losses*K_i
-        loss=torch.sum(K_y_i)/torch.sum(K_i)
+        K_y_i=anchors_losses.reshape(1,-1)*K_i
+        loss=torch.sum(K_y_i,dim=1)/(torch.sum(K_i,dim=1))
+        loss=torch.nan_to_num(loss,nan=float("inf"))
         return loss
     
 
     def calibrate_h(self,
                     calibration_samples : torch.Tensor,
                     calibration_targets: torch.Tensor,
-                    kernel : Callable,
                     method :str ="knn",
-                    method_hyperparameters : Dict= {"min_nbrs_neigh":10},
+                    method_hyperparameters : Dict= {"min_nbrs_neigh":10,"kernel":Epanechnikov_kernel},
                     search_resolution : int =100):
         """
-        Compute h
+        Compute an optimal h
 
         calibration_samples : Samples to uses for calibration
         calibration_targets : targets of samples
@@ -94,8 +111,6 @@ class BasicKernelAprroximator(nn.Module):
 
         h_range=np.linspace(1e-10,h_max,search_resolution)
 
-        best_h=-1.0
-        
         if method == "knn":
             # We want explicity N_target_neighboors to compute the loss
             # Do a ball tree 
@@ -103,30 +118,145 @@ class BasicKernelAprroximator(nn.Module):
             N_target_neighboors=method_hyperparameters["min_nbrs_neigh"]
             avg_neighboors=[]
             for h in h_range:
-                counts=tree.query_radius(calibration_targets.detach().numpy(),r=h,count_only=True)
-                avg_neighboors.append(np.mean(counts))
+                counts=tree.query_radius(calibration_samples.detach().numpy(),r=h,count_only=True)
+                avg_neighboors.append(np.median(counts))
             
             
-            idx_best=np.argmax(np.abs(N_target_neighboors-np.array(avg_neighboors)))
+            idx_best=np.argmin(np.abs(N_target_neighboors-np.array(avg_neighboors)))
             best_h=h_range[idx_best]
 
 
         elif method == "rmse":
+            kernel=method_hyperparameters["kernel"]
+            avg_rmse=[]
 
-            param=test_data[i,:]
-            loss_approx=approximator(param,h=h,kernel=Epanechnikov_kernel)
-            loss=get_parameters_loss(parameter=param,model=model,dataloader=dataloader)
-            loss, _= rescaling_func(loss,hyperparameters=rescaling_func_hyperparameters)
-            l_x.append(loss.item())
-            l_x_hat.append(loss_approx.item())
-            MAP+=torch.abs(loss_approx-loss)
-            
+            for h in h_range:
+                pred=self.forward(calibration_samples,h,kernel=kernel)
+                errrors=(pred-calibration_targets)**2
+                mse=torch.median(errrors)
+                rmse=torch.sqrt(mse)
+                avg_rmse.append(rmse)
+            idx_best=torch.argmin(torch.tensor(avg_rmse)).item()
+            best_h=h_range[idx_best]
 
         else:
             raise ValueError
 
+        self.h=best_h
 
         return best_h
+    
+
+    def active_augment_anchors(self,
+                               maybe_anchors : torch.Tensor ,
+                               maybe_anchors_losses: torch.Tensor,
+                               maybe_anchors_preds : torch.Tensor,
+                               maybe_anchors_raw_losses : torch.Tensor):
+        """
+        This function augments the anchors with the anchors that has been computed
+        """
+        print(f"Old shape of anchors : {self.anchors.shape}")
+
+        indices=torch.argwhere(maybe_anchors_preds==float("inf"))
+        indices=torch.squeeze(indices)
+        
+        if len(indices.size())>0:
+            to_add_anchors=maybe_anchors[indices,:]
+            to_add_anchors_losses=torch.squeeze(maybe_anchors_losses[indices,:])
+            to_add_anchors_raw_losses=torch.squeeze(maybe_anchors_raw_losses[indices,:])
+
+            self.anchors=torch.concatenate([self.anchors,to_add_anchors])
+            self.anchors_losses=torch.concatenate([self.anchors_losses,to_add_anchors_losses])
+            self.anchors_raw_losses=torch.concatenate([self.anchors_raw_losses,to_add_anchors_raw_losses])
+
+            self.anchors=torch.tensor(self.anchors)
+            self.anchors_losses=torch.tensor(self.anchors_losses)
+            self.anchors_raw_losses=torch.tensor(self.anchors_raw_losses)
+
+        print(f"New shape of anchors : {self.anchors.shape}")
+
+        return indices
+    
+    def set_rescaling_parameters(self,callable:Callable,parameters:Dict):
+        self.rescaling_parameters={"func":callable,"params":parameters}
+    
+
+def active_anchors_choice(approximator : BasicKernelAprroximator,
+                          approximator_hyperparameters : Dict,
+                          sampler :EfficientSampler,
+                          sampler_hyperparameters : Dict,
+                          n_anchors_max : int = 10000,
+                          n_rounds_improve : int=10,
+                          n_targets_neighboors : int = 5) -> BasicKernelAprroximator:
+    """
+    THis function implement an active learnng strategy to sample useful anchor points in an efficient way
+    """
+
+    n_qanta=n_anchors_max//n_rounds_improve
+    n_h=100
+
+    # Init phase
+
+
+    # Define the sampler callback
+    random_sampler_callback = sampler_hyperparameters["random_sampler_callback"]
+    rescaling_func= sampler_hyperparameters["rescaling_func"]
+    rescaling_func_hyperparameters=sampler_hyperparameters["rescaling_func_hyperparameters"]
+    kernel=approximator_hyperparameters["kernel"]
+
+
+
+    for i in range(n_rounds_improve):
+        # Sample data to test
+
+        
+
+        results=sampler.sample(n_qanta,callback=random_sampler_callback,
+                            rescaling_func= rescaling_func,
+                            rescaling_func_hyperparameters=rescaling_func_hyperparameters)
+
+        
+        test_samples=results["parameters"]
+        test_targets=results["rescaled_losses"]
+        true_losses=results["losses"]
+
+        test_predictions= approximator(test_samples,kernel=kernel)
+        # Insert the one that had no neighboors
+
+        indices=approximator.active_augment_anchors(maybe_anchors=test_samples,
+                                            maybe_anchors_losses=test_targets,
+                                            maybe_anchors_preds=test_predictions,
+                                            maybe_anchors_raw_losses=true_losses)
+        
+
+        
+
+        # Recompute the metrics for prediction
+        _,rescaling_func_hyperparameters=rescaling_func(approximator.anchors_raw_losses,{"mean":None,"std":None,"lambda":None,"min":None,"max":None})
+        
+
+
+        #Calibrate this kernel h
+        
+        results=sampler.sample(n_h,callback=random_sampler_callback,
+                            rescaling_func= rescaling_func,
+                            rescaling_func_hyperparameters=rescaling_func_hyperparameters)
+
+        calibration_samples=results["parameters"]
+        calibration_targets=results["rescaled_losses"]
+
+
+        h=approximator.calibrate_h(calibration_samples= calibration_samples , 
+                                calibration_targets= calibration_targets, 
+                                method= "knn", 
+                                method_hyperparameters={"min_nbrs_neigh":n_targets_neighboors,"kernel":kernel})
+        
+    approximator.set_rescaling_parameters(rescaling_func,parameters=rescaling_func_hyperparameters)
+
+    return approximator
+        
+
+
 
     
 
