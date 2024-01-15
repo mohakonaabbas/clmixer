@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torch import optim
 
-from models import resnet18, dinov2_vitb14,dinov2_vitl14,dinov2_vits14,MLP
+from models import resnet18, dinov2_vitb14,dinov2_vitl14,dinov2_vits14,MLP,Identity
 # from my_resnet import resnet_rebuffi
 # from mlp import MLP
 # from mlp_sam import MLP_SAM
@@ -28,6 +28,8 @@ def get_net(net_type, **kwargs):
         return dinov2_vitl14()
     elif net_type == "dinov2_vits14":
         return dinov2_vits14()
+    elif net_type == "identity":
+        return Identity(**kwargs)
 
 
 
@@ -42,3 +44,4 @@ def set_device(cfg):
 
     cfg["device"] = device
     return device
+

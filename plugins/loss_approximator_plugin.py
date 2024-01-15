@@ -60,10 +60,45 @@ class LossApproxOperation(Operation):
 
             # Sample some data
             sampler=sampling.EfficientSampler(dataloader=self.inputs.dataloader,Phi=copy.deepcopy(self.inputs.current_network),theta_mask=None)
-            samples,losses=sampler.sample(n)
+
+            rescaling_func=sampling.identity
+            cb=sampling.stratified_random_sampler_callback
+            results=sampler.sample(n,callback=cb,
+                            callback_hyperparameters={},
+                            rescaling_func= rescaling_func,
+                            rescaling_func_hyperparameters={"mean":None,"std":None,"lambda":None,"min":None,"max":None})
+
+            anchors=results["parameters"]
+            anchors_losses=results["rescaled_losses"]
+            anchors_raw_losses=results["losses"]
+            rescaling_func_hyperparameters=results["rescaling_hyperparameters"]
+
+            # samples,losses=sampler.sample(n)
 
             # Create a new approximator model to approximate the loss landscape
-            approximator=approximators.BasicKernelAprroximator(theta_refs=samples,theta_refs_losses=losses)
+            approximator=approximators.BasicKernelAprroximator(theta_refs=anchors,
+                                                                theta_refs_raw_losses=anchors_raw_losses,
+                                                                theta_refs_losses=anchors_losses)
+            
+             #Calibrate this kernel h
+            n_h=100
+            kernel=approximators.TriangleKernel
+            results=sampler.sample(n_h,callback=cb,
+                                    rescaling_func= rescaling_func,
+                                    rescaling_func_hyperparameters=rescaling_func_hyperparameters)
+
+            calibration_samples=results["parameters"]
+            calibration_targets=results["rescaled_losses"]
+
+
+            h=approximator.calibrate_h(calibration_samples= calibration_samples , 
+                                        calibration_targets= calibration_targets, 
+                                        method= "knn", 
+                                        method_hyperparameters={"min_nbrs_neigh":10,"kernel":kernel})
+            approximator.set_rescaling_parameters(rescaling_func,parameters=rescaling_func_hyperparameters)
+
+            approximator=approximator.to("cuda:0")
+
 
 
             # self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]=[]
@@ -72,6 +107,8 @@ class LossApproxOperation(Operation):
             self.inputs.plugins_storage[self.name]["hyperparameters"]["approximators"].append(approximator.eval())
 
         if self.inputs.stage_name == "before_backward":
+
+            kernel=approximators.TriangleKernel
 
             # Get the logits and the targets
             logits=self.inputs.logits
@@ -87,13 +124,14 @@ class LossApproxOperation(Operation):
                 # Get model current classifier
                 
                 weights=sampling.extract_parameters(self.inputs.current_network)
+                weights=weights.view(1,-1)
                 # print(weights)
 
                 for approximator in approximator_models:
                     approximator.eval()
-                    loss_apprx=approximator(weights)
+                    loss_apprx=approximator(weights,kernel=kernel)
 
-                    loss+=loss_apprx
+                    loss+=loss_apprx.mean()
             
             loss_coeff=1.0
 

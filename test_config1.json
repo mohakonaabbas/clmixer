@@ -1,19 +1,19 @@
 {
     "model": {
-        "model_type": "identity",
-        "hidden_size": -1
+        "model_type": "mlp",
+        "hidden_size": 5
     },
     "data": {
-        "dataset_name": "dummy",
-        "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/dummy",
+        "dataset_name": "kth",
+        "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/kth",
         "n_experiments": 5,
-        "backbone": "None",
+        "backbone": "dinov2_vits14",
         "scenario": "cil"
     },
     "seed": 31101994,
     "optimisation": {
         "lr": 0.001,
-        "epochs": 10,
+        "epochs": 1000,
         "optimizer": {
             "type": "adam",
             "weight_decay": 0.0005
@@ -34,17 +34,9 @@
             "function": "knowledge_retention"
         },
         {
-            "name": "LossApproxOperation",
-            "hyperparameters": {
-              "approximators": [],
-              "current_task_loss_dataset":[],
-              "n":1e1,
-              "epochs":200,
-              "bs":32,
-              "lr":1e-3
-      
-            },
-            "function": "knowledge_retention"
-          }
+            "name": "CrossEntropyOperation",
+            "hyperparameters": {},
+            "function": "knowledge_incorporation"
+        }
     ]
 }

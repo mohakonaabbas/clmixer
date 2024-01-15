@@ -246,12 +246,9 @@ class Trainer:
         self.storage.lr=self.config["optimisation"]["lr"]
         self.storage.batch_size=self.config["optimisation"]["batch_size"]
 
-        optimizer_name=self.config["optimisation"]["optimizer"]["type"]
-        weight_decay=self.config["optimisation"]["optimizer"]["weight_decay"]
-        self.storage.optimizer=factory.get_optimizer(params=self.storage.current_network.parameters(),
-                                                     optimizer=optimizer_name,
-                                                     lr=self.storage.lr,
-                                                     weight_decay=weight_decay)
+        self.optimizer_name=self.config["optimisation"]["optimizer"]["type"]
+        self.weight_decay=self.config["optimisation"]["optimizer"]["weight_decay"]
+        
         
         self.storage.dataloader=self.dataloader
 
@@ -281,8 +278,15 @@ class Trainer:
         n_experiments=self.config["data"]["n_experiments"]
         backbone_name=self.config["data"]["backbone"]
         split_mode=self.config["data"]["scenario"]
+
+        if dataset_name=="dummy":
+            from datasets.dummy_base import DummyBaseDataset 
+            datasetClass=DummyBaseDataset
+        else:
+            datasetClass=BaseDataset
+
         
-        train_dataset=BaseDataset(url=data_path,
+        train_dataset=datasetClass(url=data_path,
                                 name=dataset_name,
                                 backbone_name=backbone_name,
                                 n_splits=n_experiments,
@@ -290,7 +294,7 @@ class Trainer:
                                 save_embedding=True,
                                 split_mode=split_mode)
         
-        val_dataset=BaseDataset(url=data_path,
+        val_dataset=datasetClass(url=data_path,
                                 name=dataset_name,
                                 backbone_name=backbone_name,
                                 n_splits=n_experiments,
@@ -357,6 +361,11 @@ class Trainer:
         # Update the model outputs
         self.storage.current_network.add_classes(current_task_classes=self.storage.task_mask,
                                                  old_task_classes=self.storage.seen_classes_mask)
+        
+        self.storage.optimizer=factory.get_optimizer(params=self.storage.current_network.parameters(),
+                                                     optimizer=self.optimizer_name,
+                                                     lr=self.storage.lr,
+                                                     weight_decay=self.weight_decay)
         
 
         return self.storage
