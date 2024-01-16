@@ -33,6 +33,7 @@ import jsonpickle.ext.numpy as jsonpickle_numpy
 jsonpickle_numpy.register_handlers()
 import jsonpickle
 
+torch.autograd.set_detect_anomaly(True)
 
 class Trainer:
     """

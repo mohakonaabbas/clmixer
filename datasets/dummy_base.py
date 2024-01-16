@@ -276,13 +276,13 @@ class DummyBaseDataset(torch.utils.data.Dataset):
 
         # Create the folder data
         dataset_image_path = os.path.join(url,"data")
-        # shutil.rmtree(url)
+        shutil.rmtree(url)
 
         if not os.path.exists(dataset_image_path) : 
                 os.makedirs(dataset_image_path)
 
                 #Create the data
-                n_clusters=10
+                n_clusters=3
                 n_data=1000
                 x_size=2
                 r_scaler=100

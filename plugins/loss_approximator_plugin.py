@@ -124,7 +124,8 @@ class LossApproxOperation(Operation):
                 # Get model current classifier
                 
                 weights=sampling.extract_parameters(self.inputs.current_network)
-                weights=weights.view(1,-1)
+                sh=weights.shape
+                weights=torch.reshape(weights,(1,sh[0]))
                 # print(weights)
 
                 for approximator in approximator_models:
@@ -132,8 +133,11 @@ class LossApproxOperation(Operation):
                     loss_apprx=approximator(weights,kernel=kernel)
 
                     loss+=loss_apprx.mean()
+                print("CE Loss",loss,"Value Network",loss_apprx)
             
             loss_coeff=1.0
+
+            
 
             self.inputs.loss+=loss_coeff*loss
         return self.inputs

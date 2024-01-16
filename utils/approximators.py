@@ -24,8 +24,12 @@ def IdentityKernel(u:torch.tensor):
     return u
 
 def TriangleKernel(u:torch.tensor):
-    mask=np.abs(u)<1
-    K=1-u
+    if isinstance(u,torch.Tensor):
+        abs=torch.abs
+    if isinstance(u,np.ndarray):
+        abs=np.abs
+    mask=abs(u)<1
+    K=1.0-u
     K=K*mask
 
     return K
@@ -63,18 +67,23 @@ class BasicKernelAprroximator(nn.Module):
         min_distance=torch.min(self.anchors_distances_map[mask_distance]).item()
         max_distance=torch.max(self.anchors_distances_map[mask_distance]).item()
 
-        def scaler(x):
+        def scaler(x_):
             """
             Scale the normss sto be close to the real topography of the space
 
             """
+            
 
-            if not isinstance(x,torch.Tensor):
-                x=torch.tensor(x,dtype=torch.float32)
+            if not isinstance(x_,torch.Tensor):
+                x=torch.tensor(x_,dtype=torch.float32)
+            else:
+                x=x_.clone()
 
             mask_min=torch.abs(x)<=min_distance
             mask_max=torch.abs(x)>=max_distance
             mask_middle=torch.bitwise_not(mask_min+mask_max)
+            
+            # y=mask_middle*((x-min_distance)/(max_distance-min_distance))+mask_max*x + mask_min*x
 
 
             x[mask_min]=0.0
@@ -101,7 +110,7 @@ class BasicKernelAprroximator(nn.Module):
         h_=h if h>0 else self.h
         #Compute the norm of theta-anchors
         device=theta.get_device()
-        if device>0:
+        if device>=0:
             device="cuda:0"
         else: 
             device ="cpu"
@@ -114,14 +123,14 @@ class BasicKernelAprroximator(nn.Module):
 
         norms=torch.norm(anchors-w_theta,dim=2)
 
-        norms=self.distance_scaler(norms)/self.distance_scaler(h_)
+        norms2=self.distance_scaler(norms)/self.distance_scaler(h_)
 
         # norms=self.distance_scaler(norms)
-        K_i=kernel(norms)
+        K_i=kernel(norms2)
         K_y_i=anchors_losses.reshape(1,-1)*K_i
-        loss=torch.sum(K_y_i,dim=1)/(torch.sum(K_i,dim=1))
-        loss=torch.nan_to_num(loss,nan=float("inf"))
-        # loss=torch.nan_to_num(loss,nan=3.0)
+        loss=torch.sum(K_y_i,dim=1)/(torch.sum(K_i,dim=1)+1e-5)
+        # loss=torch.nan_to_num(loss,nan=float("inf"))
+        loss=torch.nan_to_num(loss,nan=3.0)
         return loss
     
 

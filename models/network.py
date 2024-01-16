@@ -26,10 +26,11 @@ class CosineClassifier(Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        stdv = 1. / math.sqrt(self.weight.size(1))
-        self.weight.data.uniform_(-stdv, stdv)
-        if self.sigma is not None:
-            self.sigma.data.fill_(1)  #for initializaiton of sigma
+        with torch.no_grad():
+            stdv = 1. / math.sqrt(self.weight.size(1))
+            self.weight.data.uniform_(-stdv, stdv)
+            if self.sigma is not None:
+                self.sigma.data.fill_(1)  #for initializaiton of sigma
 
     def forward(self, input):
         out = F.linear(F.normalize(input, p=2, dim=1), F.normalize(self.weight, p=2, dim=1))
