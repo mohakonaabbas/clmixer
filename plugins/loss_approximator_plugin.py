@@ -26,7 +26,10 @@ class LossApproxOperation(Operation):
       "name": self.__class__.__name__,
       "hyperparameters": {
         "approximators": [],
-        # "current_task_loss_dataset":[],
+        "current_task_loss_dataset":{
+                "weights": [],
+                "losses":[]
+            },
         "n":10**4,
         # "epochs":100,
         # "bs":32,
@@ -42,21 +45,30 @@ class LossApproxOperation(Operation):
         LossApproxOperation entropy function
         """
         
-        # if self.inputs.stage_name == "after_backward":
-        #     # Get model current classifier
-        #     param_list=[]
-        #     for name,param in self.inputs.current_network.named_parameters():
-        #         if ("weight" in name) : # or ("bias" in name):
-        #             param_list.append(torch.flatten(copy.copy(param.data)))
-        #     weights=extract_parameters(self.inputs.current_network)
-        #     self.input_shape=weights.shape
-        #     loss=self.inputs.loss
-        #     self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"].append((weights,loss.data))
+        if self.inputs.stage_name == "after_backward":
+            # Get model current classifier
+
+            weights=sampling.extract_parameters(self.inputs.current_network)
+            sh=weights.shape
+            weights=torch.reshape(weights,(1,sh[0]))
+            self.input_shape=weights.shape
+            loss=self.inputs.loss
+            self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["weights"].append(weights.data)
+            self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["losses"].append(loss.data)
 
         if self.inputs.stage_name == "after_training_exp":
 
             n=self.inputs.plugins_storage[self.name]["hyperparameters"]["n"]
             n=int(n)
+
+            # Get the recorded data
+            rec_losses=torch.stack(self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["losses"])
+            rec_losses=torch.reshape(rec_losses,(rec_losses.shape[0],1))
+            rec_weights=torch.concat(self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["weights"])
+
+            # Free the space 
+            self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["weights"]=[]
+            self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["losses"]=[]
 
             # Sample some data
             sampler=sampling.EfficientSampler(dataloader=self.inputs.dataloader,Phi=copy.deepcopy(self.inputs.current_network),theta_mask=None)
@@ -68,20 +80,36 @@ class LossApproxOperation(Operation):
                             rescaling_func= rescaling_func,
                             rescaling_func_hyperparameters={"mean":None,"std":None,"lambda":None,"min":None,"max":None})
 
-            anchors=results["parameters"]
-            anchors_losses=results["rescaled_losses"]
-            anchors_raw_losses=results["losses"]
+            sampled_anchors=results["parameters"]
+            sampled_anchors_losses=results["rescaled_losses"]
+            sampled_anchors_raw_losses=results["losses"]
             rescaling_func_hyperparameters=results["rescaling_hyperparameters"]
+
+            with torch.no_grad():
+                anchors_losses=torch.concatenate([sampled_anchors_losses,rec_losses.to("cpu")])
+                anchors = torch.concatenate([sampled_anchors,rec_weights.to("cpu")])
+                anchors_raw_losses = torch.concatenate([sampled_anchors_losses,rec_losses.to("cpu")])
+
+            # anchors=torch.tensor(anchors)
+            # anchors_losses=torch.tensor(anchors_losses)
+            # anchors_raw_losses=torch.tensor(anchors_raw_losses)
+
+
+
 
             # samples,losses=sampler.sample(n)
 
             # Create a new approximator model to approximate the loss landscape
-            approximator=approximators.BasicKernelAprroximator(theta_refs=anchors,
-                                                                theta_refs_raw_losses=anchors_raw_losses,
-                                                                theta_refs_losses=anchors_losses)
+            # approximator=approximators.BasicKernelAprroximator(theta_refs=anchors,
+            #                                                     theta_refs_raw_losses=anchors_raw_losses,
+            #                                                     theta_refs_losses=anchors_losses)
+            
+            approximator=approximators.BasicMLPAprroximator(theta_refs=anchors,
+                                                                theta_refs_raw_losses=anchors_raw_losses)
+            
             
              #Calibrate this kernel h
-            n_h=100
+            n_h=20
             kernel=approximators.TriangleKernel
             results=sampler.sample(n_h,callback=cb,
                                     rescaling_func= rescaling_func,
@@ -120,20 +148,25 @@ class LossApproxOperation(Operation):
             
             loss = F.cross_entropy(logits.softmax(dim=1), targets,reduction=reduction)
 
+            
+
             if len(approximator_models)>0:
                 # Get model current classifier
+                # loss=0.0
                 
                 weights=sampling.extract_parameters(self.inputs.current_network)
                 sh=weights.shape
                 weights=torch.reshape(weights,(1,sh[0]))
                 # print(weights)
-
-                for approximator in approximator_models:
+                
+                for (i,approximator) in enumerate(approximator_models):
                     approximator.eval()
                     loss_apprx=approximator(weights,kernel=kernel)
+                    loss+=torch.squeeze(loss_apprx)
 
-                    loss+=loss_apprx.mean()
-                print("CE Loss",loss,"Value Network",loss_apprx)
+                # loss=loss/(i+1) 
+                loss=loss/(i+2) 
+                # print("Overal Loss",loss,"Value Network",torch.mean(torch.tensor(losses_approx)))
             
             loss_coeff=1.0
 

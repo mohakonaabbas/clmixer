@@ -9,7 +9,11 @@ from torch.utils import data
 from sklearn.model_selection import KFold
 import copy
 from sklearn.neighbors import BallTree
-from .sampling import EfficientSampler, identity, box_cox, normal , minmax
+try:
+    from .sampling import EfficientSampler, identity, box_cox, normal , minmax
+except:
+    from sampling import EfficientSampler, identity, box_cox, normal , minmax
+
 
 def Epanechnikov_kernel(u:torch.tensor):
     """
@@ -114,6 +118,7 @@ class BasicKernelAprroximator(nn.Module):
             device="cuda:0"
         else: 
             device ="cpu"
+            
         anchors=copy.deepcopy(self.anchors).to(device)
         anchors_losses=copy.deepcopy(self.anchors_losses).to(device)
 
@@ -122,8 +127,9 @@ class BasicKernelAprroximator(nn.Module):
         w_theta=torch.reshape(theta,(w_shape[0],1,w_shape[1]))
 
         norms=torch.norm(anchors-w_theta,dim=2)
+        norms2=norms-norms.min()
 
-        norms2=self.distance_scaler(norms)/self.distance_scaler(h_)
+        # norms2=self.distance_scaler(norms)/self.distance_scaler(h_)
 
         # norms=self.distance_scaler(norms)
         K_i=kernel(norms2)
@@ -305,40 +311,220 @@ def active_anchors_choice(approximator : BasicKernelAprroximator,
 
 
 
+
+class BasicMLPModule(nn.Module):
+    """
+    A simple MLP wich maps all parameters from the classifier to the loss function on a certain dataset X
+    """
+    def __init__(self,
+                input_dim : int,
+                hidden_dim : int = 64,
+                out_dimension : int = 1):
+        super().__init__()
+
+        self.input_dim=input_dim
+        self.out_dim=out_dimension
+        self.model=nn.Sequential(nn.Linear(self.input_dim,hidden_dim,bias=True),
+                    nn.ReLU(),
+                    nn.Linear(hidden_dim,hidden_dim//2,bias=True),
+                    nn.ReLU(),
+                    nn.Linear(hidden_dim//2,hidden_dim//4,bias=True),
+                    nn.ReLU(),
+                    nn.Linear(hidden_dim//4,self.out_dim,bias=True)
+                    )
+    
+
+    def forward(self, x):
+        return self.model(x)
+    
+
+class AEMLPModule(nn.Module):
+    """
+    A simple MLP wich maps all parameters from the classifier to the loss function on a certain dataset X
+    """
+    def __init__(self,
+                input_dim : int,
+                hidden_dim : int = 128,
+                out_dimension : int = 1,
+                encoding_dim : int = 3):
+        super().__init__()
+
+        self.input_dim=input_dim
+        self.out_dim=out_dimension
+        self.encoder=nn.Sequential(nn.Linear(self.input_dim,hidden_dim,bias=True),
+                    nn.ReLU(),
+                    nn.BatchNorm1d(num_features=hidden_dim),
+                    # nn.Dropout(p=0.1),
+                    nn.Linear(hidden_dim,hidden_dim//2,bias=True),
+                    nn.ReLU(),
+                    nn.BatchNorm1d(num_features=hidden_dim//2),
+                    # nn.Dropout(p=0.1),
+                    nn.Linear(hidden_dim//2,hidden_dim//4,bias=True),
+                    nn.ReLU(),
+                    nn.BatchNorm1d(num_features=hidden_dim//4),
+                    # nn.Dropout(p=0.1),
+                    nn.Linear(hidden_dim//4,encoding_dim,bias=True)
+                    )
+        self.decoder=nn.Sequential(
+            nn.Linear(encoding_dim,hidden_dim//4,bias=True),
+            nn.ReLU(),
+            nn.Linear(hidden_dim//4,hidden_dim//2,bias=True),
+            nn.ReLU(),
+            nn.Linear(hidden_dim//2,hidden_dim,bias=True),
+            nn.ReLU(),
+            nn.Linear(hidden_dim,self.input_dim,bias=True)
+            )
+        
+        # self.predHead=nn.Sequential(nn.Linear(encoding_dim,encoding_dim,bias=False),
+        #             nn.ReLU(),
+        #             nn.Linear(encoding_dim,self.out_dim,bias=True)
+        #             )
+        
+        self.predHead=nn.Sequential(nn.Linear(encoding_dim,self.out_dim,bias=True)
+            )
+    
+
+    def forward(self, x):
+        encoding=self.encoder(x)
+        decoding=self.decoder(encoding)
+        pred=self.predHead(encoding)
+        return {"encoding":encoding,"pred":pred,"decoding":decoding}
+
+
+
+class simpleDataset(torch.utils.data.Dataset):
+        def __init__(self,thetas:torch.Tensor,losses=torch.Tensor):
+            self.X=thetas
+            self.y=losses
+
+            # Statistics
+            self.means={"x":torch.mean(self.X,dim=0),"y":torch.mean(self.y,dim=0)}
+            self.std={"x":torch.std(self.X,dim=0),"y":torch.std(self.y,dim=0)}
+                
+
+        
+        def __len__(self):
+            return len(self.X)
+        
+        def __getitem__(self, idx):
+
+            x=torch.tensor(self.X[idx,:],dtype=torch.float32)
+            y=torch.tensor(self.y[idx],dtype=torch.float32)
+            x,y = (x-self.means["x"])/self.std["x"], (y-self.means["y"])/self.std["y"]
+            return x,y
+    
+
+    
+
+class contrativeDataset(torch.utils.data.Dataset):
+        def __init__(self,thetas:torch.Tensor,losses=torch.Tensor):
+            self.X=thetas
+            self.y=losses
+                       
+
+            # # Statistics
+            # self.means={"x":torch.mean(self.X,dim=0),"y":torch.mean(self.y,dim=0)}
+            # self.std={"x":torch.std(self.X,dim=0),"y":torch.std(self.y,dim=0)}
+
+            self.means={"x":torch.min(self.X,dim=0)[0],"y":torch.min(self.y,dim=0)[0]}
+            self.std={"x":torch.max(self.X,dim=0)[0]-torch.min(self.X,dim=0)[0],"y":torch.max(self.y,dim=0)[0]-torch.min(self.y,dim=0)[0]}
+
+            # Neighbooring sampling
+            self.r=0.03
+            self.max_neigh=1
+
+            # buffer 
+            self.buffer={}
+                
+
+        
+        def __len__(self):
+            return len(self.X)
+        
+        def __getitem__(self, idx):
+            
+            if self.buffer:
+                if idx in self.buffer.keys():
+                    return self.buffer[idx]
+            
+
+            x=torch.tensor(self.X[idx,:],dtype=torch.float32)
+            y=torch.tensor(self.y[idx],dtype=torch.float32)
+            epsilon=self.r
+            not_epsilon=0.5*(self.y.max()-y)/y
+
+            thresholding=torch.squeeze(torch.abs((self.y-y)/y)<=epsilon)
+            inverse_thresholding=torch.squeeze(torch.abs((self.y-y)/y)>=not_epsilon)
+
+
+
+            # Get positive anchors
+            subset=self.X[thresholding,:]
+            len_subset=subset.shape[0]
+            # indices=torch.randperm(len_subset)[:self.max_neigh]
+            
+            indices=torch.randint(len_subset,(self.max_neigh,))
+            pos_x=self.X[thresholding,:][indices,:]
+            pos_y=self.y[thresholding,:][indices,:]
+            # Get Negative anchors
+            subset=self.X[inverse_thresholding,:]
+            len_subset=subset.shape[0]
+            # indices=torch.randperm(len_subset)[:self.max_neigh]
+            indices=torch.randint(len_subset,(self.max_neigh,))
+
+            neg_x=self.X[inverse_thresholding,:][indices,:]
+            neg_y=self.y[inverse_thresholding,:][indices,:]
+
+            normalize=False
+            if normalize:
+                x,y = (x-self.means["x"])/self.std["x"], (y-self.means["y"])/self.std["y"]
+                pos_x,pos_y = (pos_x-self.means["x"])/self.std["x"], (pos_y-self.means["y"])/self.std["y"]
+                neg_x,neg_y = (neg_x-self.means["x"])/self.std["x"], (neg_y-self.means["y"])/self.std["y"]
+            res= {"x":x,"pos_x":torch.squeeze(pos_x),"neg_x":torch.squeeze(neg_x)},{"y":y,"pos_y":torch.squeeze(pos_y),"neg_y":torch.squeeze(neg_y)}
+            self.buffer[idx]=res
+            return res    
+
     
 
 
 
 class BasicMLPAprroximator:
     def __init__(self,
-                 network,
-                 epochs,
-                 bs,
-                 lr,
-                 loader):
+                theta_refs : torch.Tensor,
+                theta_refs_raw_losses : torch.Tensor,
+                callback_hyperparameters : Dict ={"epochs":250,
+                                                  "lr":1e-3,
+                                                  "mlp_model":BasicMLPModule,
+                                                  "optimizer":torch.optim.SGD}):
         """
-        Args :
-            epochs : Epochs
-            bs: batch size
-            lr:learning rate
-            X: weights to regress. Size =  encoder output x Classifier outputs
-            y : loss value to regress to
-            criterion : regression criterion
-        
+        Args:
+            - theta_refs : Represent the sampled parameters.
+            - theta_refs_raw_losses : The losses
+            - callback_hyperparameters : the others parameters 
         """
-        
-        
+
+        theta_dim=theta_refs.shape[-1]
+        network=callback_hyperparameters["mlp_model"](input_dim=theta_dim)
+        epochs=callback_hyperparameters["epochs"]
+        lr=callback_hyperparameters["lr"]
         loss_criterion = F.mse_loss
         network.train()
         network=network.to('cuda:0')
         loss=0.0
-        optimizer = torch.optim.SGD(network.parameters(), lr=lr)
+        optimizer = callback_hyperparameters["optimizer"](network.parameters(), lr=lr)
+
         pbar=tqdm(range(epochs))
+        dataset=simpleDataset(thetas=theta_refs,losses=theta_refs_raw_losses)
+        self.data_mean=dataset.means
+        self.data_std=dataset.std
+        loader=data.DataLoader(dataset,batch_size=64,shuffle=True)
 
         for epoch in pbar:
             
             for inputs,targets in loader:
-
+                inputs=inputs.to("cuda:0")
+                targets=targets.to("cuda:0")
+                
                 outputs=network(inputs)
                 loss = loss_criterion(outputs, targets)
                 pbar.set_description("%s  " % loss.item())
@@ -348,24 +534,105 @@ class BasicMLPAprroximator:
         
         self.network=network
 
-
-class LandScapeModel(nn.Module):
-    """
-    A simple MLP wich maps all parameters from the classifier to the loss function on a certain dataset X
-    """
-    def __init__(self,
-                input_dim : int,
-                out_dimension : int = 1):
-        super().__init__()
-
-        self.input_dim=input_dim
-        self.out_dim=out_dimension
-        self.model=nn.Sequential(nn.Linear(self.input_dim,self.out_dim,bias=True),
-                        nn.BatchNorm1d(self.out_dim),
-                        nn.ReLU(),
-                        nn.Dropout(p=0.1))
-
-
-    def forward(self, x):
-        return self.model(x)
+        # The parameters here does not requires further training
+        with torch.no_grad():
+            for p in self.network.parameters():
+                p.requires_grad = False
         
+        return self.network
+
+class AEMLPApproximator:
+    def __init__(self,
+                theta_refs : torch.Tensor,
+                theta_refs_raw_losses : torch.Tensor,
+                callback_hyperparameters : Dict ={"epochs":250,
+                                                  "lr":1e-3,
+                                                  "mlp_model":AEMLPModule,
+                                                  "optimizer":torch.optim.SGD}):
+        """
+        Args:
+            - theta_refs : Represent the sampled parameters.
+            - theta_refs_raw_losses : The losses
+            - callback_hyperparameters : the others parameters 
+        """
+
+        theta_dim=theta_refs.shape[-1]
+        network=callback_hyperparameters["mlp_model"](input_dim=theta_dim)
+        epochs=callback_hyperparameters["epochs"]
+        lr=callback_hyperparameters["lr"]
+        loss_criterion = F.mse_loss
+        network.train()
+        network=network.to('cuda:0')
+        loss=0.0
+        optimizer = callback_hyperparameters["optimizer"](network.parameters(), lr=lr)
+
+        pbar=tqdm(range(epochs))
+        dataset=contrativeDataset(thetas=theta_refs,losses=theta_refs_raw_losses)
+        self.data_mean=dataset.means
+        self.data_std=dataset.std
+        loader=data.DataLoader(dataset,batch_size=64,shuffle=True)
+
+        for epoch in pbar:
+            
+            for inputs_,targets_ in loader:
+
+                inputs=inputs_["x"].to("cuda:0")
+                targets=targets_["y"].to("cuda:0")
+
+                pos_inputs=inputs_["pos_x"].to("cuda:0")
+                pos_targets=targets_["pos_y"].to("cuda:0")
+
+                neg_inputs=inputs_["neg_x"].to("cuda:0")
+                neg_targets=targets_["neg_y"].to("cuda:0")
+
+
+
+
+                outputs=network(inputs)
+                loss_ae=torch.nn.L1Loss()(outputs["decoding"],inputs)
+                loss_pred = torch.nn.L1Loss()(outputs["pred"], targets)
+                with torch.no_grad():
+                    outputs_pos=network(pos_inputs)
+                    outputs_neg=network(neg_inputs)
+
+                # loss_alignement_pos=torch.nn.CosineEmbeddingLoss()(outputs["encoding"],
+                #                                                outputs_pos["encoding"],
+                #                                                torch.ones(len(outputs_pos["encoding"])).to("cuda:0"))
+
+
+                loss_alignement_neg=torch.nn.CosineEmbeddingLoss()(outputs["encoding"],
+                                                               outputs_neg["encoding"],
+                                                               -1*torch.ones(len(outputs_pos["encoding"])).to("cuda:0"))
+
+
+
+                loss_alignement_pos=torch.nn.L1Loss()(outputs["encoding"], outputs_pos["encoding"])
+
+                # MARGIN=-torch.tensor(10.0)
+                # loss_alignement_neg=torch.maximum(MARGIN,-torch.nn.MSELoss()(outputs["encoding"],outputs_neg["encoding"]))
+
+                loss_alignement=loss_alignement_pos+loss_alignement_neg
+
+
+
+
+               
+                loss= loss_alignement + 1*loss_pred +loss_ae 
+                # rmse_loss=torch.sqrt(loss_pred)
+                # if epoch>1000:
+                #     loss=loss+loss_pred
+
+                pbar.set_description(f"Losses : autoencoder {loss_ae:.4f} - MAE_pred {loss_pred:.4f} - align_pos {loss_alignement_pos:.6f} - align_neg {loss_alignement_neg:.6f} ")
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+        
+        self.network=network
+
+        # The parameters here does not requires further training
+        with torch.no_grad():
+            for p in self.network.parameters():
+                p.requires_grad = False
+        
+        return self.network
+

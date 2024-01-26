@@ -282,7 +282,7 @@ class DummyBaseDataset(torch.utils.data.Dataset):
                 os.makedirs(dataset_image_path)
 
                 #Create the data
-                n_clusters=3
+                n_clusters=5
                 n_data=1000
                 x_size=2
                 r_scaler=100

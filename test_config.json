@@ -6,14 +6,14 @@
     "data": {
         "dataset_name": "dummy",
         "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/dummy",
-        "n_experiments": 5,
+        "n_experiments": 3 ,
         "backbone": "None",
         "scenario": "cil"
     },
     "seed": 31101994,
     "optimisation": {
         "lr": 0.001,
-        "epochs": 100,
+        "epochs": 150,
         "optimizer": {
             "type": "adam",
             "weight_decay": 0.0005
@@ -37,7 +37,10 @@
             "name": "LossApproxOperation",
             "hyperparameters": {
               "approximators": [],
-              "current_task_loss_dataset":[],
+              "current_task_loss_dataset":{
+                "weights": [],
+                "losses":[]
+            },
               "n":1e2,
               "epochs":200,
               "bs":32,

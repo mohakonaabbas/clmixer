@@ -231,6 +231,7 @@ def random_sampler_callback(n : int ,
     D=torch.sum(theta_mask).item()
     dimension=len(theta_mask)
     coeffs=torch.rand(n,D)
+    coeffs=-1+2*coeffs
     # coeffs=coeffs/torch.sum(coeffs,dim=1).reshape(-1,1)
     indices=torch.argwhere(theta_mask)
     indices=torch.squeeze(indices)
@@ -240,9 +241,10 @@ def random_sampler_callback(n : int ,
 
     losses=torch.zeros((n,1))
 
-    for i in tqdm(range(n)):
-        loss=get_parameters_loss(parameter=parameters[i,:],model=Phi,dataloader=dataloader)
-        losses[i]=loss
+    with torch.no_grad():
+        for i in tqdm(range(n)):
+            loss=get_parameters_loss(parameter=parameters[i,:],model=Phi,dataloader=dataloader)
+            losses[i]=loss
 
     if rescaling_func is not None:
         rescaled_losses,rescaling_func_hyperparameters=rescaling_func(losses,rescaling_func_hyperparameters)
@@ -260,7 +262,7 @@ def random_sampler_callback(n : int ,
 
 
 
-    results={"parameters":parameters,"losses":losses,"rescaled_losses":rescaled_losses,"rescaling_hyperparameters": rescaling_func_hyperparameters}
+    results={"initial_parameters":coeffs,"parameters":parameters,"losses":losses,"rescaled_losses":rescaled_losses,"rescaling_hyperparameters": rescaling_func_hyperparameters}
 
 
     
@@ -290,6 +292,7 @@ def stratified_random_sampler_callback(n : int ,
     sampler=qmc.LatinHypercube(d=D)
     coeffs=sampler.random(n)
     coeffs=torch.tensor(coeffs,dtype=torch.float32)
+    coeffs=-1+2*coeffs
     # coeffs=torch.rand(n,D)
     # coeffs=coeffs/torch.sum(coeffs,dim=1).reshape(-1,1)
     indices=torch.argwhere(theta_mask)
@@ -300,9 +303,10 @@ def stratified_random_sampler_callback(n : int ,
 
     losses=torch.zeros((n,1))
 
-    for i in tqdm(range(n)):
-        loss=get_parameters_loss(parameter=parameters[i,:],model=Phi,dataloader=dataloader)
-        losses[i]=loss
+    with torch.no_grad():
+        for i in tqdm(range(n)):
+            loss=get_parameters_loss(parameter=parameters[i,:],model=Phi,dataloader=dataloader)
+            losses[i]=loss
 
     if rescaling_func is not None:
         rescaled_losses,rescaling_func_hyperparameters=rescaling_func(losses,rescaling_func_hyperparameters)
@@ -320,7 +324,7 @@ def stratified_random_sampler_callback(n : int ,
 
 
 
-    results={"parameters":parameters,"losses":losses,"rescaled_losses":rescaled_losses,"rescaling_hyperparameters": rescaling_func_hyperparameters}
+    results={"initial_parameters":coeffs,"parameters":parameters,"losses":losses,"rescaled_losses":rescaled_losses,"rescaling_hyperparameters": rescaling_func_hyperparameters}
 
 
     
@@ -402,6 +406,7 @@ def value_imposed_sampler_callback(n : int ,
     D=torch.sum(theta_mask).item()
     dimension=len(theta_mask)
     coeffs=torch.rand(n,D)
+    coeffs=-1+2*coeffs
     # coeffs=coeffs/torch.sum(coeffs,dim=1).reshape(-1,1)
     indices=torch.argwhere(theta_mask)
     indices=torch.squeeze(indices)
@@ -451,9 +456,10 @@ def value_imposed_sampler_callback(n : int ,
 
         parameters[i,:]=extract_parameters(Phi)
 
-    for i in tqdm(range(n)):
-        loss=get_parameters_loss(parameter=parameters[i,:],model=Phi,dataloader=dataloader)
-        losses[i]=loss
+    with torch.no_grad():
+        for i in tqdm(range(n)):
+            loss=get_parameters_loss(parameter=parameters[i,:],model=Phi,dataloader=dataloader)
+            losses[i]=loss
     print(list(zip(targets_values,losses)))
 
     if rescaling_func is not None:
@@ -471,7 +477,116 @@ def value_imposed_sampler_callback(n : int ,
                 rescaling_func_hyperparameters[key]=torch.tensor(value)
 
 
-    results={"parameters":parameters,"losses":losses,"rescaled_losses":rescaled_losses,"rescaling_hyperparameters": rescaling_func_hyperparameters}
+    results={"initial_parameters":coeffs, "parameters":parameters,"losses":losses,"rescaled_losses":rescaled_losses,"rescaling_hyperparameters": rescaling_func_hyperparameters}
+
+
+    
+    
+    return results
+
+
+
+def retrain_sampler_callback(n : int ,
+                            dataloader : data.DataLoader,
+                            Phi : torch.nn.Module,
+                            theta_mask : torch.Tensor,
+                            callback_hyperparameters : Dict ,
+                            rescaling_func : Union[None,Callable]=None,
+                            rescaling_func_hyperparameters : Union[None,Dict] = {}):
+    """
+    Value imposed sampler of parameters
+    n : int : The number of sample to generate
+    dataloader : data.DataLoader : The dataloader with all the data
+    Phi : torch.nn.Module : The model to condition the fit on
+    theta_mask : torch.tensor : The mask of the parameters to sample
+    rescaling_func : Callable : a function that transform the data
+    rescaling_func_hyperparameters : the hyperparameters needed for rescaling_func
+    """
+    epochs=callback_hyperparameters["epochs"]
+    lr=callback_hyperparameters["lr"]
+    D=torch.sum(theta_mask).item()
+    dimension=len(theta_mask)
+    coeffs=torch.rand(n,D)
+    coeffs=-1+2*coeffs
+    # coeffs=coeffs/torch.sum(coeffs,dim=1).reshape(-1,1)
+    indices=torch.argwhere(theta_mask)
+    indices=torch.squeeze(indices)
+    parameters=torch.ones((n,dimension)) #*torch.tensor(extract_parameters(Phi))
+    parameters[:,indices]=coeffs
+
+    losses=torch.zeros((n,1))
+    
+    
+    losses=torch.zeros((n,1))
+
+    
+    loader = dataloader
+    
+    optimizer = torch.optim.Adam(Phi.parameters(), lr=lr)
+    pbar=tqdm(range(epochs))
+
+
+
+      # Optimise with a target Cross Validation model evaluation
+    
+    collected_theta=[]
+    collected_theta_losses=[]
+
+    for i in tqdm(range(n)):
+        parameter=parameters[i,:]
+        Phi=insert_parameters(Phi,parameter,train=True)
+        Phi.train()
+        Phi=Phi.to('cuda:0')
+        for epoch in tqdm(range(epochs)):
+            count=1
+            avg_loss=0.0
+            for inputs, targets in loader:
+                loss=0.0
+                optimizer.zero_grad()
+                inputs=inputs.to("cuda:0")
+                targets=targets.to("cuda:0")
+                
+                outputs=Phi(inputs)
+                loss=F.cross_entropy(outputs["logits"].softmax(dim=1),targets)
+                count+=1
+                
+                loss.backward()
+                optimizer.step()
+                avg_loss=avg_loss+(loss-avg_loss)/count
+                if np.random.choice([True,False],p=[0.5,0.5]):
+                    collected_theta.append(extract_parameters(Phi).data.view(1,-1))
+                    collected_theta_losses.append(avg_loss.data.view(1,-1))
+        print(i,avg_loss.data)
+
+    
+
+        # parameters[i,:]=extract_parameters(Phi)
+    
+    
+    with torch.no_grad():
+        losses=torch.concatenate(collected_theta_losses).cpu()
+        parameters=torch.concatenate(collected_theta).cpu()
+    #     for i in tqdm(range(n)):
+    #         loss=get_parameters_loss(parameter=parameters[i,:],model=Phi,dataloader=dataloader)
+    #         losses[i]=loss
+    # print(losses)
+
+    if rescaling_func is not None:
+        rescaled_losses,rescaling_func_hyperparameters=rescaling_func(losses,rescaling_func_hyperparameters)
+    else:
+        rescaled_losses=None
+        rescaling_func_hyperparameters=None
+
+    # Map everything to torch tensor
+    if not isinstance(rescaled_losses,torch.Tensor):
+        rescaled_losses=torch.tensor(rescaled_losses)
+    for key,value in rescaling_func_hyperparameters.items():
+        if not isinstance(value,torch.Tensor):
+            if value is not None:
+                rescaling_func_hyperparameters[key]=torch.tensor(value)
+
+
+    results={"parameters":parameters,"losses":losses,"rescaled_losses":rescaled_losses,"rescaling_hyperparameters": rescaling_func_hyperparameters,"initial_parameters":coeffs}
 
 
     
@@ -540,6 +655,7 @@ if __name__== "__main__":
     torch.manual_seed(194)
     import matplotlib.pyplot as plt
     import matplotlib.colors as mcolors
+    import math
     class simpleDataset(torch.utils.data.Dataset):
         def __init__(self,n_clusters=5,n_data=100):
 
@@ -580,7 +696,33 @@ if __name__== "__main__":
     dataloader=data.DataLoader(simpleDataset(),batch_size=50,shuffle=True)
 
 
-    #Create dummy model
+    #Create dummy mode
+
+    class CosineClassifier(nn.Module):
+        def __init__(self, in_features, n_classes, sigma=True):
+            super(CosineClassifier, self).__init__()
+            self.in_features = in_features
+            self.out_features = n_classes
+            self.weight = nn.Parameter(torch.Tensor(n_classes, in_features))
+            if sigma:
+                self.sigma = nn.Parameter(torch.Tensor(1))
+            else:
+                self.register_parameter('sigma', None)
+            self.reset_parameters()
+
+        def reset_parameters(self):
+            with torch.no_grad():
+                stdv = 1. / math.sqrt(self.weight.size(1))
+                self.weight.data.uniform_(-stdv, stdv)
+                if self.sigma is not None:
+                    self.sigma.data.fill_(1)  #for initializaiton of sigma
+
+        def forward(self, input):
+            out = F.linear(F.normalize(input, p=2, dim=1), F.normalize(self.weight, p=2, dim=1))
+            if self.sigma is not None:
+                out = self.sigma * out
+            # return out
+            return {"logits":out}
 
     class LandScapeModel(nn.Module):
         """
@@ -603,7 +745,8 @@ if __name__== "__main__":
 
     # Sample some data
 
-    model=LandScapeModel(input_dim=x_size,out_dimension=10)
+    # model=LandScapeModel(input_dim=x_size,out_dimension=5)
+    model=CosineClassifier(in_features=x_size,n_classes=10)
     model=model.to("cuda:0")
 
     mask=extract_parameters(model=model)
@@ -611,7 +754,7 @@ if __name__== "__main__":
     mask=torch.ones(len(mask),dtype=torch.bool)
     sampler=EfficientSampler(dataloader=dataloader,Phi=model,theta_mask=None)
     
-    n=10000
+    n=10
 
     # Define the sampler callback
     rescaling_func=identity
@@ -626,13 +769,17 @@ if __name__== "__main__":
     rescaling_func_hyperparameters=results["rescaling_hyperparameters"]
 
 
-    range_tail_losses=[anchors_losses.min().item()/2.0,torch.quantile(anchors_losses,0.25).item()]
+    # range_tail_losses=[anchors_losses.min().item()/2.0,torch.quantile(anchors_losses,0.25).item()]
+    range_tail_losses=[1.91,1.911]
+    range_tail_losses=[0.01,0.011]
     results_imposed=None
-    impose_results=False
+    impose_results=True
+
+    n_imposed=3
 
     if impose_results:
-        results_imposed=sampler.sample(10,callback=value_imposed_sampler_callback,
-                            callback_hyperparameters={"range":range_tail_losses,"epochs":250,"lr":1e-2},
+        results_imposed=sampler.sample(n_imposed,callback=retrain_sampler_callback,
+                            callback_hyperparameters={"range":range_tail_losses,"epochs":100,"lr":1e-3},
                             rescaling_func= rescaling_func,
                             rescaling_func_hyperparameters=rescaling_func_hyperparameters)
 
@@ -656,11 +803,36 @@ if __name__== "__main__":
     # plt.imshow(distances_map)
     # plt.show()
    
-    from approximators import BasicKernelAprroximator,Epanechnikov_kernel,IdentityKernel,TriangleKernel, active_anchors_choice
+    from approximators import BasicKernelAprroximator, AEMLPApproximator,\
+    BasicMLPAprroximator, \
+    BasicMLPModule, \
+    AEMLPModule, \
+    Epanechnikov_kernel, \
+    IdentityKernel, \
+    TriangleKernel, \
+    active_anchors_choice
 
-    approximator=BasicKernelAprroximator(theta_refs=anchors,
-                                         theta_refs_raw_losses=anchors_raw_losses,
-                                         theta_refs_losses=anchors_losses)
+    # approximator=BasicKernelAprroximator(theta_refs=anchors,
+    #                                      theta_refs_raw_losses=anchors_raw_losses,
+    # 
+    #                                      theta_refs_losses=anchors_losses)
+
+    approx_simple=False
+    if not approx_simple:
+        approximator=AEMLPApproximator(theta_refs=anchors,
+                                            theta_refs_raw_losses=anchors_raw_losses,
+                                            callback_hyperparameters={"epochs":2000,
+                                                    "lr":1e-3,
+                                                    "mlp_model":AEMLPModule,
+                                                    "optimizer":torch.optim.Adam})
+    if approx_simple:
+        approximator=BasicMLPAprroximator(theta_refs=anchors,
+                                        theta_refs_raw_losses=anchors_raw_losses,
+                                        callback_hyperparameters={"epochs":2000,
+                                                "lr":1e-3,
+                                                "mlp_model":BasicMLPModule,
+                                                "optimizer":torch.optim.Adam})
+
 
     #Calibrate this kernel h
     n_h=1000
