@@ -346,7 +346,7 @@ class AEMLPModule(nn.Module):
                 input_dim : int,
                 hidden_dim : int = 128,
                 out_dimension : int = 1,
-                encoding_dim : int = 3):
+                encoding_dim : int = 2):
         super().__init__()
 
         self.input_dim=input_dim
@@ -354,15 +354,15 @@ class AEMLPModule(nn.Module):
         self.encoder=nn.Sequential(nn.Linear(self.input_dim,hidden_dim,bias=True),
                     nn.ReLU(),
                     nn.BatchNorm1d(num_features=hidden_dim),
-                    # nn.Dropout(p=0.1),
+                    nn.Dropout(p=0.1),
                     nn.Linear(hidden_dim,hidden_dim//2,bias=True),
                     nn.ReLU(),
                     nn.BatchNorm1d(num_features=hidden_dim//2),
-                    # nn.Dropout(p=0.1),
+                    nn.Dropout(p=0.1),
                     nn.Linear(hidden_dim//2,hidden_dim//4,bias=True),
                     nn.ReLU(),
                     nn.BatchNorm1d(num_features=hidden_dim//4),
-                    # nn.Dropout(p=0.1),
+                    nn.Dropout(p=0.1),
                     nn.Linear(hidden_dim//4,encoding_dim,bias=True)
                     )
         self.decoder=nn.Sequential(
@@ -541,7 +541,7 @@ class BasicMLPAprroximator:
         
         return self.network
 
-class AEMLPApproximator:
+class AEMLPApproximator(nn.Module):
     def __init__(self,
                 theta_refs : torch.Tensor,
                 theta_refs_raw_losses : torch.Tensor,
@@ -555,6 +555,7 @@ class AEMLPApproximator:
             - theta_refs_raw_losses : The losses
             - callback_hyperparameters : the others parameters 
         """
+        super().__init__()
 
         theta_dim=theta_refs.shape[-1]
         network=callback_hyperparameters["mlp_model"](input_dim=theta_dim)
@@ -633,6 +634,8 @@ class AEMLPApproximator:
         with torch.no_grad():
             for p in self.network.parameters():
                 p.requires_grad = False
+
+    def forward(self,x):
+        return self.network(x)
         
-        return self.network
 

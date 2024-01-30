@@ -10,7 +10,9 @@ from sklearn.model_selection import KFold
 from scipy import stats
 from copy import deepcopy
 import warnings
-
+from sklearn import datasets, linear_model
+from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.model_selection import train_test_split
 from scipy.stats import qmc
 warnings.filterwarnings("ignore")
 #UTILS
@@ -553,9 +555,9 @@ def retrain_sampler_callback(n : int ,
                 loss.backward()
                 optimizer.step()
                 avg_loss=avg_loss+(loss-avg_loss)/count
-                if np.random.choice([True,False],p=[0.5,0.5]):
-                    collected_theta.append(extract_parameters(Phi).data.view(1,-1))
-                    collected_theta_losses.append(avg_loss.data.view(1,-1))
+            # if np.random.choice([True,False],p=[0.5,0.5]):
+            collected_theta.append(extract_parameters(Phi).data.view(1,-1))
+            collected_theta_losses.append(avg_loss.data.view(1,-1))
         print(i,avg_loss.data)
 
     
@@ -657,7 +659,7 @@ if __name__== "__main__":
     import matplotlib.colors as mcolors
     import math
     class simpleDataset(torch.utils.data.Dataset):
-        def __init__(self,n_clusters=5,n_data=100):
+        def __init__(self,n_clusters=10,n_data=100):
 
             alpha=np.linspace(0,1,n_clusters)
 
@@ -754,7 +756,7 @@ if __name__== "__main__":
     mask=torch.ones(len(mask),dtype=torch.bool)
     sampler=EfficientSampler(dataloader=dataloader,Phi=model,theta_mask=None)
     
-    n=10
+    n=1000
 
     # Define the sampler callback
     rescaling_func=identity
@@ -775,11 +777,11 @@ if __name__== "__main__":
     results_imposed=None
     impose_results=True
 
-    n_imposed=3
+    n_imposed=100
 
     if impose_results:
         results_imposed=sampler.sample(n_imposed,callback=retrain_sampler_callback,
-                            callback_hyperparameters={"range":range_tail_losses,"epochs":100,"lr":1e-3},
+                            callback_hyperparameters={"range":range_tail_losses,"epochs":100,"lr":1e-2},
                             rescaling_func= rescaling_func,
                             rescaling_func_hyperparameters=rescaling_func_hyperparameters)
 
@@ -816,18 +818,19 @@ if __name__== "__main__":
     #                                      theta_refs_raw_losses=anchors_raw_losses,
     # 
     #                                      theta_refs_losses=anchors_losses)
+    X_train, X_test, y_train, y_test=train_test_split(anchors,anchors_raw_losses)
 
     approx_simple=False
     if not approx_simple:
-        approximator=AEMLPApproximator(theta_refs=anchors,
-                                            theta_refs_raw_losses=anchors_raw_losses,
+        approximator=AEMLPApproximator(theta_refs=X_train,
+                                            theta_refs_raw_losses=y_train,
                                             callback_hyperparameters={"epochs":2000,
                                                     "lr":1e-3,
                                                     "mlp_model":AEMLPModule,
                                                     "optimizer":torch.optim.Adam})
     if approx_simple:
-        approximator=BasicMLPAprroximator(theta_refs=anchors,
-                                        theta_refs_raw_losses=anchors_raw_losses,
+        approximator=BasicMLPAprroximator(theta_refs=X_train,
+                                        theta_refs_raw_losses=y_train,
                                         callback_hyperparameters={"epochs":2000,
                                                 "lr":1e-3,
                                                 "mlp_model":BasicMLPModule,
@@ -835,21 +838,22 @@ if __name__== "__main__":
 
 
     #Calibrate this kernel h
-    n_h=1000
-    kernel=TriangleKernel
-    results=sampler.sample(n_h,callback=stratified_random_sampler_callback,
-                           rescaling_func= rescaling_func,
-                           rescaling_func_hyperparameters=rescaling_func_hyperparameters)
+    if False:
+        n_h=1000
+        kernel=TriangleKernel
+        results=sampler.sample(n_h,callback=stratified_random_sampler_callback,
+                            rescaling_func= rescaling_func,
+                            rescaling_func_hyperparameters=rescaling_func_hyperparameters)
 
-    calibration_samples=results["parameters"]
-    calibration_targets=results["rescaled_losses"]
+        calibration_samples=results["parameters"]
+        calibration_targets=results["rescaled_losses"]
 
 
-    h=approximator.calibrate_h(calibration_samples= calibration_samples , 
-                             calibration_targets= calibration_targets, 
-                             method= "knn", 
-                             method_hyperparameters={"min_nbrs_neigh":10,"kernel":kernel})
-    approximator.set_rescaling_parameters(rescaling_func,parameters=rescaling_func_hyperparameters)
+        h=approximator.calibrate_h(calibration_samples= calibration_samples , 
+                                calibration_targets= calibration_targets, 
+                                method= "knn", 
+                                method_hyperparameters={"min_nbrs_neigh":10,"kernel":kernel})
+        approximator.set_rescaling_parameters(rescaling_func,parameters=rescaling_func_hyperparameters)
 
     # Improve 
 
@@ -872,49 +876,59 @@ if __name__== "__main__":
                             n_targets_neighboors = 3)
     
     # Test the prediction
-
-    n_test=100
-    results=sampler.sample(n_test,callback=stratified_random_sampler_callback,
-                           rescaling_func= rescaling_func,
-                           rescaling_func_hyperparameters=rescaling_func_hyperparameters)
-    
-    test_samples=results["parameters"]
-    test_targets=results["rescaled_losses"]
-
-    test_predictions= approximator(test_samples,kernel=kernel)
-    # test_targets=anchors_losses
-    # test_predictions= approximator(anchors,kernel=kernel)
-
-    pred=torch.squeeze(test_predictions).detach().numpy()
-    true=torch.squeeze(test_targets).detach().numpy()
-
-
-    from sklearn import datasets, linear_model
-    from sklearn.metrics import mean_squared_error, r2_score
-
-
-
+        
+    fig,ax=plt.subplots(2,1)
+    plt.grid(True)
+    # plt.xlim(1.5,2.5)
+    # plt.ylim(1.5,2.5)
     # Create linear regression object
     regr = linear_model.LinearRegression(fit_intercept=True)
+    
+
+   
+
+    #Training predictions
+    test_targets=y_train
+    test_predictions= approximator(X_train.to("cuda:0"))
+    pred_train=torch.squeeze(test_predictions["pred"]).detach().cpu().numpy()
+    true_train=torch.squeeze(test_targets).detach().numpy()
 
     # Train the model using the training sets
-    regr.fit(true.reshape(-1,1), pred)
-
+    regr.fit(true_train.reshape(-1,1), pred_train)
     # Make predictions using the testing set
-    line = regr.predict(true.reshape(-1,1))
-
+    line_train = regr.predict(true_train.reshape(-1,1))
     coef=regr.coef_
-    r2_= r2_score(pred, line)
+    r2_= r2_score(pred_train, line_train)
+    ax[0].scatter(true_train,pred_train)
+    ax[0].plot(true_train, line_train, color="red", linewidth=3)
+    ax[0].set_xlabel(xlabel="true")
+    ax[0].set_ylabel(ylabel="pred")
+    ax[0].set_title(f"Train data --  slope : {coef} -  R2 : {r2_}")
 
-    plt.scatter(true,pred)
-    plt.plot(true, line, color="red", linewidth=3)
-    plt.grid(True)
-    plt.xlim(1.5,2.5)
-    plt.ylim(1.5,2.5)
-    plt.xlabel(xlabel="true")
-    plt.ylabel(ylabel="pred")
+    # True tests predictions
+    # n_test=anchors.shape[0]
+    # results=sampler.sample(n_test,callback=stratified_random_sampler_callback,
+    #                        rescaling_func= rescaling_func,
+    #                        rescaling_func_hyperparameters=rescaling_func_hyperparameters)
+    
+    # test_samples=results["parameters"]
+    # test_targets=results["rescaled_losses"]
+    test_predictions= approximator(X_test.to("cuda:0"))
+    pred_test=torch.squeeze(test_predictions["pred"]).detach().cpu().numpy()
+    true_test=torch.squeeze(y_test).detach().numpy()
 
-    plt.title(f" slope : {coef} \n R2 : {r2_}")
+    # Train the model using the training sets
+    regr.fit(true_test.reshape(-1,1), pred_test)
+    # Make predictions using the testing set
+    line_test = regr.predict(true_test.reshape(-1,1))
+    coef=regr.coef_
+    r2_= r2_score(pred_test, line_test)
+    ax[1].scatter(true_test,pred_test)
+    ax[1].plot(true_test, line_test, color="red", linewidth=3)
+    ax[1].set_xlabel(xlabel="true")
+    ax[1].set_ylabel(ylabel="pred")
+    ax[1].set_title(f"Test data --  slope : {coef} -  R2 : {r2_}")
+    fig.suptitle('Pred vs True ')
     plt.show()
     print()
 
