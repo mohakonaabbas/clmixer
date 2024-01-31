@@ -89,7 +89,7 @@ def get_parameters_loss(parameter,
 
 
     # Test on the data loader
-    count=1
+    count=0
     loss=0.0
     model=model.to("cuda:0")
     for inputs, targets in dataloader:
@@ -654,7 +654,7 @@ if __name__== "__main__":
     #Create dummy dataloader
 
     x_size=2
-    torch.manual_seed(194)
+    # torch.manual_seed(194)
     import matplotlib.pyplot as plt
     import matplotlib.colors as mcolors
     import math
@@ -756,7 +756,7 @@ if __name__== "__main__":
     mask=torch.ones(len(mask),dtype=torch.bool)
     sampler=EfficientSampler(dataloader=dataloader,Phi=model,theta_mask=None)
     
-    n=1000
+    n=100
 
     # Define the sampler callback
     rescaling_func=identity
@@ -777,11 +777,13 @@ if __name__== "__main__":
     results_imposed=None
     impose_results=True
 
-    n_imposed=100
+    n_imposed=3
+    training_epochs=100
+
 
     if impose_results:
         results_imposed=sampler.sample(n_imposed,callback=retrain_sampler_callback,
-                            callback_hyperparameters={"range":range_tail_losses,"epochs":100,"lr":1e-2},
+                            callback_hyperparameters={"range":range_tail_losses,"epochs":training_epochs,"lr":1e-2},
                             rescaling_func= rescaling_func,
                             rescaling_func_hyperparameters=rescaling_func_hyperparameters)
 
@@ -818,13 +820,14 @@ if __name__== "__main__":
     #                                      theta_refs_raw_losses=anchors_raw_losses,
     # 
     #                                      theta_refs_losses=anchors_losses)
-    X_train, X_test, y_train, y_test=train_test_split(anchors,anchors_raw_losses)
+    X_train, X_test, y_train, y_test=train_test_split(anchors,anchors_raw_losses,test_size=0.1)
 
     approx_simple=False
     if not approx_simple:
+        epochs=400
         approximator=AEMLPApproximator(theta_refs=X_train,
                                             theta_refs_raw_losses=y_train,
-                                            callback_hyperparameters={"epochs":2000,
+                                            callback_hyperparameters={"epochs":epochs,
                                                     "lr":1e-3,
                                                     "mlp_model":AEMLPModule,
                                                     "optimizer":torch.optim.Adam})
@@ -877,8 +880,10 @@ if __name__== "__main__":
     
     # Test the prediction
         
-    fig,ax=plt.subplots(2,1)
-    plt.grid(True)
+    fig = plt.figure(figsize=plt.figaspect(2.))
+    ax= fig.add_subplot(2, 2, 1)
+    # plt.subplots(2,1,subplot_kw={"projection": "3d"})
+    # plt.grid(True)
     # plt.xlim(1.5,2.5)
     # plt.ylim(1.5,2.5)
     # Create linear regression object
@@ -899,11 +904,11 @@ if __name__== "__main__":
     line_train = regr.predict(true_train.reshape(-1,1))
     coef=regr.coef_
     r2_= r2_score(pred_train, line_train)
-    ax[0].scatter(true_train,pred_train)
-    ax[0].plot(true_train, line_train, color="red", linewidth=3)
-    ax[0].set_xlabel(xlabel="true")
-    ax[0].set_ylabel(ylabel="pred")
-    ax[0].set_title(f"Train data --  slope : {coef} -  R2 : {r2_}")
+    ax.scatter(true_train,pred_train)
+    ax.plot(true_train, line_train, color="red", linewidth=3)
+    ax.set_xlabel(xlabel="true")
+    ax.set_ylabel(ylabel="pred")
+    ax.set_title(f"Train data --  slope : {coef} -  R2 : {r2_}")
 
     # True tests predictions
     # n_test=anchors.shape[0]
@@ -922,13 +927,48 @@ if __name__== "__main__":
     # Make predictions using the testing set
     line_test = regr.predict(true_test.reshape(-1,1))
     coef=regr.coef_
+    ax= fig.add_subplot(2, 2, 2)
     r2_= r2_score(pred_test, line_test)
-    ax[1].scatter(true_test,pred_test)
-    ax[1].plot(true_test, line_test, color="red", linewidth=3)
-    ax[1].set_xlabel(xlabel="true")
-    ax[1].set_ylabel(ylabel="pred")
-    ax[1].set_title(f"Test data --  slope : {coef} -  R2 : {r2_}")
+    ax.scatter(true_test,pred_test)
+    ax.plot(true_test, line_test, color="red", linewidth=3)
+    ax.set_xlabel(xlabel="true")
+    ax.set_ylabel(ylabel="pred")
+    ax.set_title(f"Test data --  slope : {coef} -  R2 : {r2_}")
     fig.suptitle('Pred vs True ')
+
+
+
+    # Show the loss function ( apply only if embedding is 2d)
+    # Second subplot
+    ax = fig.add_subplot(2, 1, 2, projection='3d')
+
+    X = np.arange(-2.0, 2.0, 0.1)
+    Y = np.arange(-2.0, 2.0, 0.1)
+    X, Y = np.meshgrid(X, Y)
+    with torch.no_grad():
+        X_=torch.tensor(X,dtype=torch.float32)
+        X_=torch.reshape(X_,X.shape+(1,))
+        Y_=torch.tensor(Y,dtype=torch.float32)
+        Y_=torch.reshape(Y_,Y_.shape+(1,))
+        data=torch.concatenate((X_,Y_),dim=-1)
+
+        Z=approximator.network.predHead(data.reshape(-1,2).to("cuda:0"))
+        Z=torch.squeeze(Z.reshape(X_.shape)).detach().cpu().numpy()
+
+
+    surf = ax.plot_surface(X, Y, Z, rstride=1, cstride=1,
+                        linewidth=0, antialiased=False)
+    # ax.set_zlim(-1, 1)
+    xs,ys,zs=test_predictions["encoding"][:,0],test_predictions["encoding"][:,1],true_test
+    xs,ys=torch.squeeze(xs.detach()).cpu().numpy(),torch.squeeze(ys.detach()).cpu().numpy()
+
+    ax.scatter(xs, ys, zs,c="tab:orange",s=22, cmap="viridis",alpha=0.7)
+    ax.set_xlabel('X Label')
+    ax.set_ylabel('Y Label')
+    ax.set_zlabel('Z Label')
+
+
+
     plt.show()
     print()
 

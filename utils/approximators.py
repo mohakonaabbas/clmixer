@@ -344,7 +344,7 @@ class AEMLPModule(nn.Module):
     """
     def __init__(self,
                 input_dim : int,
-                hidden_dim : int = 128,
+                hidden_dim : int = 64,
                 out_dimension : int = 1,
                 encoding_dim : int = 2):
         super().__init__()
@@ -375,13 +375,13 @@ class AEMLPModule(nn.Module):
             nn.Linear(hidden_dim,self.input_dim,bias=True)
             )
         
-        # self.predHead=nn.Sequential(nn.Linear(encoding_dim,encoding_dim,bias=False),
-        #             nn.ReLU(),
-        #             nn.Linear(encoding_dim,self.out_dim,bias=True)
-        #             )
+        self.predHead=nn.Sequential(nn.Linear(encoding_dim,encoding_dim,bias=True),
+                    nn.LeakyReLU(),
+                    nn.Linear(encoding_dim,self.out_dim,bias=True)
+                    )
         
-        self.predHead=nn.Sequential(nn.Linear(encoding_dim,self.out_dim,bias=True)
-            )
+        # self.predHead=nn.Sequential(nn.Linear(encoding_dim,self.out_dim,bias=True)
+        #     )
     
 
     def forward(self, x):
