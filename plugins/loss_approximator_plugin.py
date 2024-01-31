@@ -14,7 +14,7 @@ from utils import sampling,approximators
 class LossApproxOperation(Operation):
 # class LossLandscapeOperation():
     def __init__(self,
-                entry_point =["before_backward","after_backward","after_training_exp"],
+                entry_point =["before_backward","after_training_epoch","after_training_exp"],
                 inputs={},
             callback=(lambda x:x), 
             paper_ref="",
@@ -45,14 +45,15 @@ class LossApproxOperation(Operation):
         LossApproxOperation entropy function
         """
         
-        if self.inputs.stage_name == "after_backward":
+        if self.inputs.stage_name == "after_training_epoch":
             # Get model current classifier
 
             weights=sampling.extract_parameters(self.inputs.current_network)
+            loss=sampling.get_parameters_loss(parameter=weights,model=self.inputs.current_network,dataloader=self.inputs.dataloader)
+    #         
             sh=weights.shape
             weights=torch.reshape(weights,(1,sh[0]))
-            self.input_shape=weights.shape
-            loss=self.inputs.loss
+
             self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["weights"].append(weights.data)
             self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["losses"].append(loss.data)
 
@@ -74,21 +75,28 @@ class LossApproxOperation(Operation):
             sampler=sampling.EfficientSampler(dataloader=self.inputs.dataloader,Phi=copy.deepcopy(self.inputs.current_network),theta_mask=None)
 
             rescaling_func=sampling.identity
-            cb=sampling.stratified_random_sampler_callback
+            cb=sampling.retrain_sampler_callback
+            training_epochs=self.inputs.plugins_storage[self.name]["hyperparameters"]["sampling_epochs"]
             results=sampler.sample(n,callback=cb,
-                            callback_hyperparameters={},
+                                   callback_hyperparameters={"epochs":training_epochs,"lr":1e-2},
                             rescaling_func= rescaling_func,
                             rescaling_func_hyperparameters={"mean":None,"std":None,"lambda":None,"min":None,"max":None})
 
-            sampled_anchors=results["parameters"]
-            sampled_anchors_losses=results["rescaled_losses"]
-            sampled_anchors_raw_losses=results["losses"]
+            # sampled_anchors=results["parameters"]
+            # sampled_anchors_losses=results["rescaled_losses"]
+            # sampled_anchors_raw_losses=results["losses"]
+            # rescaling_func_hyperparameters=results["rescaling_hyperparameters"]
+
+            anchors=results["parameters"]
+            anchors_losses=results["rescaled_losses"]
+            anchors_raw_losses=results["losses"]
             rescaling_func_hyperparameters=results["rescaling_hyperparameters"]
 
+
             with torch.no_grad():
-                anchors_losses=torch.concatenate([sampled_anchors_losses,rec_losses.to("cpu")])
-                anchors = torch.concatenate([sampled_anchors,rec_weights.to("cpu")])
-                anchors_raw_losses = torch.concatenate([sampled_anchors_losses,rec_losses.to("cpu")])
+                anchors_losses=torch.concatenate([anchors_losses,rec_losses.to("cpu")])
+                anchors = torch.concatenate([anchors,rec_weights.to("cpu")])
+                anchors_raw_losses = torch.concatenate([anchors_raw_losses,rec_losses.to("cpu")])
 
             # anchors=torch.tensor(anchors)
             # anchors_losses=torch.tensor(anchors_losses)
@@ -104,26 +112,34 @@ class LossApproxOperation(Operation):
             #                                                     theta_refs_raw_losses=anchors_raw_losses,
             #                                                     theta_refs_losses=anchors_losses)
             
-            approximator=approximators.BasicMLPAprroximator(theta_refs=anchors,
-                                                                theta_refs_raw_losses=anchors_raw_losses)
+            # approximator=approximators.AEMLPApproximator(theta_refs=anchors,
+            #                                                     theta_refs_raw_losses=anchors_raw_losses)
+            
+            epochs=self.inputs.plugins_storage[self.name]["hyperparameters"]["epochs"]
+            approximator=approximators.AEMLPApproximator(theta_refs=anchors,
+                                    theta_refs_raw_losses=anchors_raw_losses,
+                                    callback_hyperparameters={"epochs":epochs,
+                                            "lr":1e-3,
+                                            "mlp_model":approximators.AEMLPModule,
+                                            "optimizer":torch.optim.Adam})
             
             
-             #Calibrate this kernel h
-            n_h=20
-            kernel=approximators.TriangleKernel
-            results=sampler.sample(n_h,callback=cb,
-                                    rescaling_func= rescaling_func,
-                                    rescaling_func_hyperparameters=rescaling_func_hyperparameters)
+            #  #Calibrate this kernel h
+            # n_h=20
+            # kernel=approximators.TriangleKernel
+            # results=sampler.sample(n_h,callback=cb,
+            #                         rescaling_func= rescaling_func,
+            #                         rescaling_func_hyperparameters=rescaling_func_hyperparameters)
 
-            calibration_samples=results["parameters"]
-            calibration_targets=results["rescaled_losses"]
+            # calibration_samples=results["parameters"]
+            # calibration_targets=results["rescaled_losses"]
 
 
-            h=approximator.calibrate_h(calibration_samples= calibration_samples , 
-                                        calibration_targets= calibration_targets, 
-                                        method= "knn", 
-                                        method_hyperparameters={"min_nbrs_neigh":10,"kernel":kernel})
-            approximator.set_rescaling_parameters(rescaling_func,parameters=rescaling_func_hyperparameters)
+            # h=approximator.calibrate_h(calibration_samples= calibration_samples , 
+            #                             calibration_targets= calibration_targets, 
+            #                             method= "knn", 
+            #                             method_hyperparameters={"min_nbrs_neigh":10,"kernel":kernel})
+            # approximator.set_rescaling_parameters(rescaling_func,parameters=rescaling_func_hyperparameters)
 
             approximator=approximator.to("cuda:0")
 
@@ -136,7 +152,7 @@ class LossApproxOperation(Operation):
 
         if self.inputs.stage_name == "before_backward":
 
-            kernel=approximators.TriangleKernel
+            # kernel=approximators.TriangleKernel
 
             # Get the logits and the targets
             logits=self.inputs.logits
@@ -161,8 +177,10 @@ class LossApproxOperation(Operation):
                 
                 for (i,approximator) in enumerate(approximator_models):
                     approximator.eval()
-                    loss_apprx=approximator(weights,kernel=kernel)
-                    loss+=torch.squeeze(loss_apprx)
+                    # loss_apprx=approximator(weights,kernel=kernel)
+                    loss_apprx=approximator(weights)
+                    # loss+=loss_apprx["pred"]
+                    loss+=torch.squeeze(loss_apprx["pred"])
 
                 # loss=loss/(i+1) 
                 loss=loss/(i+2) 
