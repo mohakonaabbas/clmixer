@@ -25,6 +25,9 @@ def extract_parameters(model):
             # parameter+=torch.flatten(param.data).tolist()
             parameter.append(torch.flatten(param))
     parameter=torch.cat(parameter)
+    if not parameter.requires_grad:
+        print("wierd")
+
     return parameter
 
 def insert_parameters(model,parameter,train=False):
@@ -98,6 +101,23 @@ def get_parameters_loss(parameter,
         outputs=model(inputs)
         loss+=criterion(outputs["logits"].softmax(dim=1),targets)
         count+=1
+
+    
+    # Update model parameter
+    start=0
+    for name,param in model.named_parameters():
+            if ("weight" not in name) :
+                continue
+            shape=param.shape
+            flat_shape=np.prod(param.shape)
+            end=start+flat_shape
+            param.data=parameter[start:start+flat_shape].reshape(shape)
+            param.requires_grad = not requires_grad
+            start=end
+
+
+
+
     return loss/count
 
 

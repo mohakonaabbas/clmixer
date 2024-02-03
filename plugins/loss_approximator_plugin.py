@@ -162,15 +162,22 @@ class LossApproxOperation(Operation):
             # A list of neural networks models approximating the loss of old tasks
             approximator_models=self.inputs.plugins_storage[self.name]["hyperparameters"]["approximators"]
             
-            loss = F.cross_entropy(logits.softmax(dim=1), targets,reduction=reduction)
+            
+            
 
             
 
             if len(approximator_models)>0:
+                loss = F.cross_entropy(logits.softmax(dim=1), targets,reduction=reduction)
                 # Get model current classifier
                 # loss=0.0
                 
                 weights=sampling.extract_parameters(self.inputs.current_network)
+                # if not weights.requires_grad:
+                #     print(weights)
+                # else:
+                #     print("ok")
+                    
                 sh=weights.shape
                 weights=torch.reshape(weights,(1,sh[0]))
                 # print(weights)
@@ -185,6 +192,8 @@ class LossApproxOperation(Operation):
                 # loss=loss/(i+1) 
                 loss=loss/(i+2) 
                 # print("Overal Loss",loss,"Value Network",torch.mean(torch.tensor(losses_approx)))
+            else:
+                loss = F.cross_entropy(logits.softmax(dim=1), targets,reduction=reduction)
             
             loss_coeff=1.0
 
