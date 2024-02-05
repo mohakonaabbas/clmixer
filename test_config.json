@@ -12,8 +12,8 @@
     },
     "seed": 31101994,
     "optimisation": {
-        "lr": 0.01,
-        "epochs": 750,
+        "lr": 0.001,
+        "epochs": 1500,
         "optimizer": {
             "type": "adam",
             "weight_decay": 0.0005
@@ -41,7 +41,7 @@
                 "weights": [],
                 "losses":[]
             },
-              "n":50,
+              "n":10,
               "epochs":100,
               "sampling_epochs":100,
               "bs":32,
