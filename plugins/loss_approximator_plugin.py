@@ -38,6 +38,9 @@ class LossApproxOperation(Operation):
       },
       "function": "knowledge_retention"
     })
+        
+        self.past_anchors=None
+        self.past_anchors_raw_losses=None
 
 
     def LossApprox_callback(self,reduction="mean"):
@@ -94,9 +97,40 @@ class LossApproxOperation(Operation):
 
 
             with torch.no_grad():
-                anchors_losses=torch.concatenate([anchors_losses,rec_losses.to("cpu")])
-                anchors = torch.concatenate([anchors,rec_weights.to("cpu")])
-                anchors_raw_losses = torch.concatenate([anchors_raw_losses,rec_losses.to("cpu")])
+
+                
+
+                if self.past_anchors is not None:
+                    #Format the losses
+                    sh1,sh2,sh3=self.past_anchors_raw_losses.shape,anchors_raw_losses.shape,rec_losses.shape # sh1 is of form (n,m) and sh2 (n,1)
+                    old_anchors_losses=sampling.get_batch_loss(self.past_anchors,
+                                            model=copy.deepcopy(self.inputs.current_network),
+                                            dataloader=self.inputs.dataloader)
+                    losses_dim=(sh1[0]+sh2[0]+sh3[0],sh1[1]+1) # Add a new dimension to the losses. 
+                    stacked_anchors_raw_losses=torch.ones(losses_dim)*torch.nan
+                    
+                    #Fill the losses
+                    stacked_anchors_raw_losses[:sh1[0],:sh1[1]]=self.past_anchors_raw_losses
+                    stacked_anchors_raw_losses[:sh1[0],-1]=torch.squeeze(old_anchors_losses)
+
+                    stacked_anchors_raw_losses[sh1[0]:sh1[0]+sh2[0],-1]=torch.squeeze(anchors_raw_losses)
+                    stacked_anchors_raw_losses[sh1[0]+sh2[0]:,-1]=torch.squeeze(rec_losses)
+
+
+
+
+                    # anchors_losses=torch.concatenate([self.past_anchors_raw_losses,anchors_losses,rec_losses.to("cpu")])
+                    anchors = torch.concatenate([self.past_anchors,anchors,rec_weights.to("cpu")])
+                    # anchors_raw_losses = torch.concatenate([self.past_anchors_raw_losses,anchors_raw_losses,rec_losses.to("cpu")])
+                    anchors_raw_losses=stacked_anchors_raw_losses
+                else:
+                    # anchors_losses=torch.concatenate([anchors_losses,rec_losses.to("cpu")])
+                    anchors = torch.concatenate([anchors,rec_weights.to("cpu")])
+                    anchors_raw_losses = torch.concatenate([anchors_raw_losses,rec_losses.to("cpu")])
+
+            #Backup these sampling
+            self.past_anchors=anchors
+            self.past_anchors_raw_losses=anchors_raw_losses
 
             # anchors=torch.tensor(anchors)
             # anchors_losses=torch.tensor(anchors_losses)
@@ -116,11 +150,11 @@ class LossApproxOperation(Operation):
             #                                                     theta_refs_raw_losses=anchors_raw_losses)
             
             epochs=self.inputs.plugins_storage[self.name]["hyperparameters"]["epochs"]
-            approximator=approximators.AEMLPApproximator(theta_refs=anchors,
+            approximator=approximators.AEMLPIncApproximator(theta_refs=anchors,
                                     theta_refs_raw_losses=anchors_raw_losses,
                                     callback_hyperparameters={"epochs":epochs,
                                             "lr":1e-3,
-                                            "mlp_model":approximators.AEMLPModule,
+                                            "mlp_model":approximators.AEMLPIncModule,
                                             "optimizer":torch.optim.Adam})
             
             
@@ -148,7 +182,7 @@ class LossApproxOperation(Operation):
             # self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]=[]
 
             # Save the value network in "approximators"
-            self.inputs.plugins_storage[self.name]["hyperparameters"]["approximators"].append(approximator.eval())
+            self.inputs.plugins_storage[self.name]["hyperparameters"]["approximators"]=[approximator.eval()]
 
         if self.inputs.stage_name == "before_backward":
 
@@ -186,8 +220,8 @@ class LossApproxOperation(Operation):
                     approximator.eval()
                     # loss_apprx=approximator(weights,kernel=kernel)
                     loss_apprx=approximator(weights)
-                    # loss+=loss_apprx["pred"]
-                    loss+=torch.squeeze(loss_apprx["pred"])
+                    for li in loss_apprx["pred"]:
+                        loss+=torch.squeeze(li)
 
                 # loss=loss/(i+1) 
                 loss=loss/(i+2) 

@@ -120,7 +120,19 @@ def get_parameters_loss(parameter,
 
     return loss/count
 
-
+def get_batch_loss(parameters,
+                        model,
+                        dataloader,
+                        criterion=F.cross_entropy,
+                        requires_grad=False):
+    losses=[]
+    for parameter in parameters:
+        loss=get_parameters_loss(parameter=parameter,model=model,dataloader=dataloader)
+        losses.append(loss.view(1,-1))
+    with torch.no_grad():
+        losses=torch.concatenate(losses).cpu()
+    
+    return losses
 # SCALERS
 
 def identity(inputs,
