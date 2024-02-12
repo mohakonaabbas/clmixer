@@ -9,7 +9,10 @@ from typing import List, Tuple
 import numpy as np
 from datasets import base
 from utils import sampling,approximators
-
+from torch.utils.tensorboard import SummaryWriter
+writer = SummaryWriter()
+global counter_writer
+counter_writer =0
 
 class LossApproxOperation(Operation):
 # class LossLandscapeOperation():
@@ -47,6 +50,7 @@ class LossApproxOperation(Operation):
         """
         LossApproxOperation entropy function
         """
+        global counter_writer
         
         if self.inputs.stage_name == "after_training_epoch":
             # Get model current classifier
@@ -97,9 +101,6 @@ class LossApproxOperation(Operation):
 
 
             with torch.no_grad():
-
-                
-
                 if self.past_anchors is not None:
                     #Format the losses
                     sh1,sh2,sh3=self.past_anchors_raw_losses.shape,anchors_raw_losses.shape,rec_losses.shape # sh1 is of form (n,m) and sh2 (n,1)
@@ -129,8 +130,8 @@ class LossApproxOperation(Operation):
                     anchors_raw_losses = torch.concatenate([anchors_raw_losses,rec_losses.to("cpu")])
 
             #Backup these sampling
-            self.past_anchors=anchors
-            self.past_anchors_raw_losses=anchors_raw_losses
+            self.past_anchors=copy.deepcopy(anchors)
+            self.past_anchors_raw_losses=copy.deepcopy(anchors_raw_losses)
 
             # anchors=torch.tensor(anchors)
             # anchors_losses=torch.tensor(anchors_losses)
@@ -183,10 +184,13 @@ class LossApproxOperation(Operation):
 
             # Save the value network in "approximators"
             self.inputs.plugins_storage[self.name]["hyperparameters"]["approximators"]=[approximator.eval()]
+            # counter_writer=0
 
         if self.inputs.stage_name == "before_backward":
 
             # kernel=approximators.TriangleKernel
+            coefs=self.inputs.dataloader.dataset.splits.sum(axis=0)
+
 
             # Get the logits and the targets
             logits=self.inputs.logits
@@ -199,14 +203,18 @@ class LossApproxOperation(Operation):
             
             
 
-            
+            loss = F.cross_entropy(logits.softmax(dim=1), targets,reduction=reduction)
+            loss=loss*coefs[self.inputs.current_exp]/coefs[:self.inputs.current_exp+1].sum()
+            writer.add_scalar(f"loss_per_task/train_{-1}",loss,counter_writer)
 
             if len(approximator_models)>0:
-                loss = F.cross_entropy(logits.softmax(dim=1), targets,reduction=reduction)
+                
                 # Get model current classifier
                 # loss=0.0
                 
                 weights=sampling.extract_parameters(self.inputs.current_network)
+
+                
                 # if not weights.requires_grad:
                 #     print(weights)
                 # else:
@@ -216,20 +224,25 @@ class LossApproxOperation(Operation):
                 weights=torch.reshape(weights,(1,sh[0]))
                 # print(weights)
                 
-                for (i,approximator) in enumerate(approximator_models):
+                for approximator in approximator_models:
                     approximator.eval()
                     # loss_apprx=approximator(weights,kernel=kernel)
                     loss_apprx=approximator(weights)
-                    for li in loss_apprx["pred"]:
-                        loss+=torch.squeeze(li)
+                    # i_max=len(loss_apprx)
+                    for i,li in enumerate(loss_apprx["pred"]):
+                        
+                        loss+=torch.squeeze(li)*coefs[i]/coefs[:self.inputs.current_exp+1].sum()
+                        writer.add_scalar(f"loss_per_task/train_{i}",li,counter_writer)
 
                 # loss=loss/(i+1) 
-                loss=loss/(i+2) 
+                # loss=loss/(i+2) 
                 # print("Overal Loss",loss,"Value Network",torch.mean(torch.tensor(losses_approx)))
             else:
                 loss = F.cross_entropy(logits.softmax(dim=1), targets,reduction=reduction)
+                loss=loss*coefs[self.inputs.current_exp]/coefs[:self.inputs.current_exp+1].sum()
             
             loss_coeff=1.0
+            counter_writer+=1
 
             
 

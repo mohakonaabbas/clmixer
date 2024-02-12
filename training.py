@@ -72,6 +72,8 @@ class Trainer:
         #Step the dataloader
         last_ending_epoch=0
         for exp in range(self.storage.nbrs_experiments):
+            self.storage.current_exp=exp
+
             self.storage.current_network.train()
             self.storage=self.before_training_exp(self.plugins)
             self.storage=self.before_train_dataset_adaptation(self.plugins)
@@ -106,9 +108,10 @@ class Trainer:
                 # if self.early_stopper.early_stop(self.storage.eval_loss):
                 #     print("Stopping the learning due to early stopping based on val loss")
                 #     break
-                if self.early_stopper.early_stop(loss_value):
-                    print("Stopping the learning due to early stopping based on train loss")
-                    break
+                if True:
+                    if self.early_stopper.early_stop(loss_value):
+                        print("Stopping the learning due to early stopping based on train loss")
+                        break
             last_ending_epoch+=epoch
 
                 # self.epochMetric.update({"y":targets,"y_pred":self.storage.logits}) # Compute with the last batch a proxy of epoch Confusion Matrix
@@ -188,9 +191,10 @@ class Trainer:
         accuracy=accuracy[self.storage.seen_classes_mask]
         accuracy=accuracy.tolist()
         cls_name=np.arange(len(self.storage.seen_classes_mask))
-        cls_name=cls_name[self.storage.seen_classes_mask]
+        # cls_name=np.arange(len(self.storage.seen_classes_mask))
 
-        cls_name=list(map(lambda x : str(x)+"_cls_"+self.storage.dataloader.dataset.label_dict_inverted[x],cls_name))
+        # cls_name=list(map(lambda x : str(x)+"_cls_"+self.storage.dataloader.dataset.label_dict_inverted[x],cls_name))
+        cls_name=list(map(lambda x : f"Class_{self.storage.dataloader.dataset.label_dict_inverted[x]}",cls_name))
         plot=dict(zip(cls_name,accuracy))
 
         self.writer.add_scalars("eval/acc_i/",plot,exp)

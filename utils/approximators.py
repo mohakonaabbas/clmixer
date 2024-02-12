@@ -8,11 +8,21 @@ from tqdm import tqdm
 from torch.utils import data
 from sklearn.model_selection import KFold
 import copy
+import math
 from sklearn.neighbors import BallTree
 try:
-    from .sampling import EfficientSampler, identity, box_cox, normal , minmax
+    from .sampling import EfficientSampler, identity, box_cox, normal , minmax, extract_parameters_grad
 except:
-    from sampling import EfficientSampler, identity, box_cox, normal , minmax
+    from sampling import EfficientSampler, identity, box_cox, normal , minmax, extract_parameters_grad
+
+import matplotlib.pyplot as plt
+
+
+
+from torch.utils.tensorboard import SummaryWriter
+writer = SummaryWriter()
+global counter_writer
+counter_writer =0
 
 
 def Epanechnikov_kernel(u:torch.tensor):
@@ -310,7 +320,15 @@ def active_anchors_choice(approximator : BasicKernelAprroximator,
         
 
 
+class basicResidualBlock(nn.Module):
+    def __init__(self,input_shape,activation=nn.LeakyReLU()):
+        super().__init__()
+        self.fc=nn.Sequential(nn.Linear(input_shape,input_shape,bias=True),activation)
 
+
+    def forward(self,x):
+        out=x+self.fc(x)
+        return out
 
 class BasicMLPModule(nn.Module):
     """
@@ -432,10 +450,36 @@ class AEMLPIncModule(nn.Module):
         self.predHeads=nn.ModuleList()
         
         for _ in range(n_head):
-            self.predHeads.append(nn.Sequential(nn.Linear(encoding_dim,encoding_dim,bias=True),
-                    nn.LeakyReLU(),
-                    nn.Linear(encoding_dim,self.out_dim,bias=True)
+
+            # self.predHeads.append(nn.Sequential(nn.Linear(encoding_dim,encoding_dim,bias=True),
+            #         nn.LeakyReLU(),
+            #         nn.Linear(encoding_dim,encoding_dim,bias=True),
+            #         nn.LeakyReLU(),
+            #         nn.Linear(encoding_dim,encoding_dim,bias=True),
+            #         nn.LeakyReLU(),
+            #         nn.Linear(encoding_dim,encoding_dim,bias=True),
+            #         nn.LeakyReLU(),
+            #         nn.Linear(encoding_dim,self.out_dim,bias=True),
+            #         nn.ReLU()
+            #         ))
+            self.predHeads.append(nn.Sequential(
+                basicResidualBlock(encoding_dim),
+                basicResidualBlock(encoding_dim),
+                nn.Linear(encoding_dim,self.out_dim,bias=True),
+                basicResidualBlock(self.out_dim),
+                    nn.ReLU()
                     ))
+            # self.predHeads.append(nn.Sequential(nn.Linear(encoding_dim,self.out_dim,bias=True),
+            #         nn.ReLU()
+            #         ))
+        for head in self.predHeads:
+            with torch.no_grad():
+                for name,param in head.named_parameters():
+                    if ("weight" in name) :
+                        stdv = 1. / math.sqrt(param.size(1))
+                        param.data.uniform_(-stdv, stdv)
+                    elif "bias" in name:
+                        param.data.fill_(1.0)
         
         # self.predHead=nn.Sequential(nn.Linear(encoding_dim,self.out_dim,bias=True)
         #     )
@@ -550,9 +594,9 @@ class contrativeIncDataset(torch.utils.data.Dataset):
             self.X=thetas
             self.y=losses
 
-            mask=(torch.isnan(self.y)).sum(dim=1)
-            mask=mask==0
-            self.no_nan_y=self.y[mask]
+            # mask=(torch.isnan(self.y)).sum(dim=1)
+            # mask=mask==0
+            # self.no_nan_y=self.y[mask]
                        
             # Neighbooring sampling
             self.r=0.03
@@ -584,8 +628,8 @@ class contrativeIncDataset(torch.utils.data.Dataset):
             thresholding=torch.squeeze(torch.abs((self.y[:,-1]-y[:,-1])/y[:,-1])<=epsilon)
             inverse_thresholding=torch.squeeze(torch.abs((self.y[:,-1]-y[:,-1])/y[:,-1])>=not_epsilon)
 
-            if torch.tensor(self.y[idx,:],dtype=torch.float32).shape[0]==2:
-                y=torch.squeeze(y) # Useful for batching
+            # if torch.tensor(self.y[idx,:],dtype=torch.float32).shape[0]==2:
+            #     y=torch.squeeze(y) # Useful for batching
 
 
             # Get positive anchors
@@ -607,16 +651,19 @@ class contrativeIncDataset(torch.utils.data.Dataset):
             neg_x=self.X[inverse_thresholding,:][indices,:]
             neg_y=self.y[inverse_thresholding,:][indices,:]
 
-            normalize=False
-            if normalize:
-                x,y = (x-self.means["x"])/self.std["x"], (y-self.means["y"])/self.std["y"]
-                pos_x,pos_y = (pos_x-self.means["x"])/self.std["x"], (pos_y-self.means["y"])/self.std["y"]
-                neg_x,neg_y = (neg_x-self.means["x"])/self.std["x"], (neg_y-self.means["y"])/self.std["y"]
+            # normalize=False
+            # if normalize:
+            #     x,y = (x-self.means["x"])/self.std["x"], (y-self.means["y"])/self.std["y"]
+            #     pos_x,pos_y = (pos_x-self.means["x"])/self.std["x"], (pos_y-self.means["y"])/self.std["y"]
+            #     neg_x,neg_y = (neg_x-self.means["x"])/self.std["x"], (neg_y-self.means["y"])/self.std["y"]
+            
             res= {"x":x,"pos_x":torch.squeeze(pos_x),"neg_x":torch.squeeze(neg_x)},{"y":y,"pos_y":torch.squeeze(pos_y),"neg_y":torch.squeeze(neg_y)}
             self.buffer[idx]=res
             return res    
 
     
+
+
 
 
 
@@ -801,8 +848,7 @@ class AEMLPIncApproximator(nn.Module):
 
         pbar=tqdm(range(epochs))
         dataset=contrativeIncDataset(thetas=theta_refs,losses=theta_refs_raw_losses)
-        # self.data_mean=dataset.means
-        # self.data_std=dataset.std
+        
         loader=data.DataLoader(dataset,batch_size=64,shuffle=True)
 
         for epoch in pbar:
@@ -822,26 +868,36 @@ class AEMLPIncApproximator(nn.Module):
 
                 #PredictD
                 outputs=network(inputs)
-                with torch.no_grad():
-                    outputs_pos=network(pos_inputs)
-                    outputs_neg=network(neg_inputs)
+                
 
                 # Losses for reconstruction
                 loss_ae=torch.nn.L1Loss()(outputs["decoding"],inputs)
 
                 #Predictions losses
-                loss_preds=[]
+                # loss_preds=[]
                 loss_regression=0
                 tg_shape=targets.shape
                 targets=targets.reshape(tg_shape[0],tg_shape[-1])
+                # if n_heads==1:
+                #     loss_regression_ = torch.nn.L1Loss(reduction="none")(outputs["pred"][0], targets)
+                # else:
                 for k in range(n_heads):
                     local_targets=targets[:,k]
                     local_mask=torch.bitwise_not(torch.isnan(local_targets))
                     local_targets=local_targets[local_mask]
                     predictions=outputs["pred"][k][local_mask]
-                    loss_pred = torch.nn.L1Loss()(predictions, local_targets)
-                    loss_preds.append(loss_pred)
-                    loss_regression+=loss_pred
+                    if predictions.shape[0]>0:
+                        loss_pred = torch.nn.L1Loss(reduction="mean")(predictions, local_targets.view(-1,1))
+                        # loss_preds.append(loss_pred)
+                        loss_regression+=loss_pred*(n_heads-k)/n_heads
+
+                # if True:
+                #     loss_regression.backward()
+                #     extract_parameters_grad(network)
+
+                with torch.no_grad():
+                    outputs_pos=network(pos_inputs)
+                    outputs_neg=network(neg_inputs)
                 
                 
                 #Losses alignements
@@ -861,6 +917,7 @@ class AEMLPIncApproximator(nn.Module):
 
                
                 loss=  loss_regression +loss_ae + loss_alignement 
+                # loss=  loss_ae + loss_alignement 
                 # rmse_loss=torch.sqrt(loss_pred)
                 # if epoch>1000:
                 #     loss=loss+loss_pred
@@ -869,6 +926,8 @@ class AEMLPIncApproximator(nn.Module):
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+
+            writer.add_scalar(f"loss_approximation/train",loss_regression,epoch)
         
         self.network=network
 
@@ -876,6 +935,47 @@ class AEMLPIncApproximator(nn.Module):
         with torch.no_grad():
             for p in self.network.parameters():
                 p.requires_grad = False
+
+
+        # Plot the optimization
+        fig = plt.figure(figsize=plt.figaspect(2.))
+        X = np.arange(-5.0, 5.0, 0.5)
+        Y = np.arange(-5.0, 5.0, 0.5)
+        X, Y = np.meshgrid(X, Y)
+        with torch.no_grad():
+            X_=torch.tensor(X,dtype=torch.float32)
+            X_=torch.reshape(X_,X.shape+(1,))
+            Y_=torch.tensor(Y,dtype=torch.float32)
+            Y_=torch.reshape(Y_,Y_.shape+(1,))
+            datum=torch.concatenate((X_,Y_),dim=-1)
+
+            Zs=[]
+            Z_sum=0.0
+            for head in network.predHeads:
+                Z=head(datum.reshape(-1,2).to("cuda:0"))
+                Z=torch.squeeze(Z.reshape(X_.shape)).detach().cpu().numpy()
+                Zs.append(Z)
+                Z_sum=Z_sum+Z
+            Zs.append(Z_sum)
+        
+        n_col,n_row=len(Zs),1
+        for i in range(n_col):
+            ax = fig.add_subplot(1, n_col, i+1, projection='3d')
+            surf = ax.plot_surface(X, Y, Zs[i], rstride=1, cstride=1,
+                                linewidth=0, antialiased=False)
+            ax.set_xlabel('X Label')
+            ax.set_ylabel('Y Label')
+            ax.set_zlabel('Z Label')
+            ax.set_title(f'Loss for Task {i}')
+        ax.set_title(f' Sum of Losses')
+        plt.savefig(f"./fit_n_head_{n_heads}.png")
+
+
+
+        # plt.show()
+        print("Estimation finished")
+                
+        
 
     def forward(self,x):
         return self.network(x)

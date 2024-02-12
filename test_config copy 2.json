@@ -12,8 +12,8 @@
     },
     "seed": 31101994,
     "optimisation": {
-        "lr": 0.005,
-        "epochs": 1000,
+        "lr": 0.001,
+        "epochs": 10000,
         "optimizer": {
             "type": "adam",
             "weight_decay": 0.0005
@@ -27,6 +27,13 @@
     },
     "plugins": [
         {
+            "name": "RandomMemoryUpdaterOperation",
+            "hyperparameters": {
+                "cls_budget": 10
+            },
+            "function": "knowledge_retention"
+        },
+        {
             "name": "LossApproxOperation",
             "hyperparameters": {
               "approximators": [],
@@ -35,7 +42,7 @@
                 "losses":[]
             },
               "n":10,
-              "epochs":150,
+              "epochs":100,
               "sampling_epochs":50,
               "bs":32,
               "lr":1e-3

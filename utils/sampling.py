@@ -30,6 +30,21 @@ def extract_parameters(model):
 
     return parameter
 
+
+def extract_parameters_grad(model):
+    parameter=[]
+    start=0
+    for name,param in model.named_parameters():
+            if ("weight" not in name) :
+                continue
+            # parameter+=torch.flatten(param.data).tolist()
+            parameter.append(torch.flatten(param.grad))
+    parameter=torch.cat(parameter)
+    if not parameter.requires_grad:
+        print("wierd")
+
+    return parameter
+
 def insert_parameters(model,parameter,train=False):
     # Update model parameter
     start=0

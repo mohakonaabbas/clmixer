@@ -28,6 +28,7 @@ class Storage:
         self.seen_classes_mask=None
         self.nbrs_experiments=None
         self.dataloader=None
+        self.current_exp=None
 
         # Plugins placeholder for customs parameters
         self.plugins_storage={} # A list of dict of plugins parameters. Each plugins such as knowledge distillation temperature, beta for Weight align saves here its own parameters
