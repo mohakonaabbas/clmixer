@@ -12,13 +12,13 @@
     },
     "seed": 31101994,
     "optimisation": {
-        "lr": 0.005,
-        "epochs": 1000,
+        "lr": 0.001,
+        "epochs": 10000,
         "optimizer": {
             "type": "adam",
             "weight_decay": 0.0005
         },
-        "batch_size": 32,
+        "batch_size": 128,
         "device": "cuda"
     },
     "human_knowledge": {
@@ -35,9 +35,9 @@
                 "losses":[]
             },
               "n":10,
-              "epochs":150,
-              "sampling_epochs":50,
-              "bs":32,
+              "epochs":100,
+              "sampling_epochs":100,
+              "bs":128,
               "lr":1e-3
       
             },

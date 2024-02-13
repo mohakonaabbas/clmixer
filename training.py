@@ -57,7 +57,7 @@ class Trainer:
         self.epochMetric=metrics.ConfusionMatrix(scope='epoch')
         self.taskMetric=metrics.ConfusionMatrix(scope="task")
         self.writer = SummaryWriter()
-        self.early_stopper= metrics.EarlyStopper(patience=500,min_delta_percentage=0.005)
+        self.early_stopper= metrics.EarlyStopper(patience=500,min_delta_percentage=0.0001)
         
         print("Trainer initialized ! ")
     
@@ -121,7 +121,8 @@ class Trainer:
             
                 #Flush it
                 # self.epochMetric.reset()
-                
+            
+            # self.eval('val', self.val_dataloader, exp, _run, compute_metric=True)
 
             self.after_training_exp(self.plugins)
             
@@ -190,7 +191,8 @@ class Trainer:
         accuracy=accuracies[list(accuracies.keys())[-1]]
         accuracy=accuracy[self.storage.seen_classes_mask]
         accuracy=accuracy.tolist()
-        cls_name=np.arange(len(self.storage.seen_classes_mask))
+        # cls_name=np.arange(len(self.storage.seen_classes_mask))
+        cls_name=np.squeeze(np.argwhere(np.array(self.storage.seen_classes_mask)==True)).tolist()
         # cls_name=np.arange(len(self.storage.seen_classes_mask))
 
         # cls_name=list(map(lambda x : str(x)+"_cls_"+self.storage.dataloader.dataset.label_dict_inverted[x],cls_name))

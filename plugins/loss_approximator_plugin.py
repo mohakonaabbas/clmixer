@@ -5,6 +5,7 @@ import copy
 import torch
 
 from typing import List, Tuple
+from sklearn.utils import resample
 
 import numpy as np
 from datasets import base
@@ -17,7 +18,7 @@ counter_writer =0
 class LossApproxOperation(Operation):
 # class LossLandscapeOperation():
     def __init__(self,
-                entry_point =["before_backward","after_training_epoch","after_training_exp"],
+                entry_point =["before_backward","before_training_exp","after_training_epoch"],
                 inputs={},
             callback=(lambda x:x), 
             paper_ref="",
@@ -64,7 +65,13 @@ class LossApproxOperation(Operation):
             self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["weights"].append(weights.data)
             self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["losses"].append(loss.data)
 
-        if self.inputs.stage_name == "after_training_exp":
+        if self.inputs.stage_name == "before_training_exp":
+            
+            if self.inputs.current_exp<=0:
+                return self.inputs
+
+
+            
 
             n=self.inputs.plugins_storage[self.name]["hyperparameters"]["n"]
             n=int(n)
@@ -74,6 +81,14 @@ class LossApproxOperation(Operation):
             rec_losses=torch.reshape(rec_losses,(rec_losses.shape[0],1))
             rec_weights=torch.concat(self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["weights"])
 
+
+            n_resample=rec_weights.shape[0]
+            modulo=n_resample//500
+            rec_losses=rec_losses[::modulo]
+            rec_weights=rec_weights[::modulo]
+           
+            
+        
             # Free the space 
             self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["weights"]=[]
             self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["losses"]=[]
@@ -84,6 +99,9 @@ class LossApproxOperation(Operation):
             rescaling_func=sampling.identity
             cb=sampling.retrain_sampler_callback
             training_epochs=self.inputs.plugins_storage[self.name]["hyperparameters"]["sampling_epochs"]
+            
+
+
             results=sampler.sample(n,callback=cb,
                                    callback_hyperparameters={"epochs":training_epochs,"lr":1e-2},
                             rescaling_func= rescaling_func,
@@ -98,6 +116,8 @@ class LossApproxOperation(Operation):
             anchors_losses=results["rescaled_losses"]
             anchors_raw_losses=results["losses"]
             rescaling_func_hyperparameters=results["rescaling_hyperparameters"]
+
+            
 
 
             with torch.no_grad():
@@ -151,8 +171,8 @@ class LossApproxOperation(Operation):
             #                                                     theta_refs_raw_losses=anchors_raw_losses)
             
             epochs=self.inputs.plugins_storage[self.name]["hyperparameters"]["epochs"]
-            approximator=approximators.AEMLPIncApproximator(theta_refs=anchors,
-                                    theta_refs_raw_losses=anchors_raw_losses,
+            approximator=approximators.AEMLPIncApproximator(theta_refs=anchors[::self.inputs.current_exp],
+                                    theta_refs_raw_losses=anchors_raw_losses[::self.inputs.current_exp],
                                     callback_hyperparameters={"epochs":epochs,
                                             "lr":1e-3,
                                             "mlp_model":approximators.AEMLPIncModule,

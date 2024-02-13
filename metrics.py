@@ -107,7 +107,7 @@ class Accuracy(OperationMetric):
 
 
 class EarlyStopper:
-    def __init__(self, patience=5, min_delta_percentage=0.01):
+    def __init__(self, patience=5, min_delta_percentage=0.001):
         self.patience = patience
         self.min_delta = min_delta_percentage
         self.counter = 0

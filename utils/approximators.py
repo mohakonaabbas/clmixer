@@ -17,7 +17,7 @@ except:
 
 import matplotlib.pyplot as plt
 
-
+from sklearn.utils import resample
 
 from torch.utils.tensorboard import SummaryWriter
 writer = SummaryWriter()
@@ -423,6 +423,7 @@ class AEMLPIncModule(nn.Module):
 
         self.input_dim=input_dim
         self.out_dim=out_dimension
+        self.encoding_dim=encoding_dim
         self.encoder=nn.Sequential(nn.Linear(self.input_dim,hidden_dim,bias=True),
                     nn.ReLU(),
                     nn.BatchNorm1d(num_features=hidden_dim),
@@ -463,15 +464,17 @@ class AEMLPIncModule(nn.Module):
             #         nn.ReLU()
             #         ))
             self.predHeads.append(nn.Sequential(
-                basicResidualBlock(encoding_dim),
-                basicResidualBlock(encoding_dim),
+                basicResidualBlock(encoding_dim,activation=nn.ReLU()),
+                basicResidualBlock(encoding_dim,activation=nn.ReLU()),
                 nn.Linear(encoding_dim,self.out_dim,bias=True),
-                basicResidualBlock(self.out_dim),
-                    nn.ReLU()
+                nn.ReLU(),
+                basicResidualBlock(self.out_dim,activation=nn.ReLU()),
                     ))
+            
             # self.predHeads.append(nn.Sequential(nn.Linear(encoding_dim,self.out_dim,bias=True),
             #         nn.ReLU()
             #         ))
+            
         for head in self.predHeads:
             with torch.no_grad():
                 for name,param in head.named_parameters():
@@ -936,39 +939,39 @@ class AEMLPIncApproximator(nn.Module):
             for p in self.network.parameters():
                 p.requires_grad = False
 
+        plot_utilities(theta_refs, self.network,projection="2d")
+        # # Plot the optimization
+        # fig = plt.figure(figsize=plt.figaspect(2.))
+        # X = np.arange(-5.0, 5.0, 0.5)
+        # Y = np.arange(-5.0, 5.0, 0.5)
+        # X, Y = np.meshgrid(X, Y)
+        # with torch.no_grad():
+        #     X_=torch.tensor(X,dtype=torch.float32)
+        #     X_=torch.reshape(X_,X.shape+(1,))
+        #     Y_=torch.tensor(Y,dtype=torch.float32)
+        #     Y_=torch.reshape(Y_,Y_.shape+(1,))
+        #     datum=torch.concatenate((X_,Y_),dim=-1)
 
-        # Plot the optimization
-        fig = plt.figure(figsize=plt.figaspect(2.))
-        X = np.arange(-5.0, 5.0, 0.5)
-        Y = np.arange(-5.0, 5.0, 0.5)
-        X, Y = np.meshgrid(X, Y)
-        with torch.no_grad():
-            X_=torch.tensor(X,dtype=torch.float32)
-            X_=torch.reshape(X_,X.shape+(1,))
-            Y_=torch.tensor(Y,dtype=torch.float32)
-            Y_=torch.reshape(Y_,Y_.shape+(1,))
-            datum=torch.concatenate((X_,Y_),dim=-1)
-
-            Zs=[]
-            Z_sum=0.0
-            for head in network.predHeads:
-                Z=head(datum.reshape(-1,2).to("cuda:0"))
-                Z=torch.squeeze(Z.reshape(X_.shape)).detach().cpu().numpy()
-                Zs.append(Z)
-                Z_sum=Z_sum+Z
-            Zs.append(Z_sum)
+        #     Zs=[]
+        #     Z_sum=0.0
+        #     for head in network.predHeads:
+        #         Z=head(datum.reshape(-1,2).to("cuda:0"))
+        #         Z=torch.squeeze(Z.reshape(X_.shape)).detach().cpu().numpy()
+        #         Zs.append(Z)
+        #         Z_sum=Z_sum+Z
+        #     Zs.append(Z_sum)
         
-        n_col,n_row=len(Zs),1
-        for i in range(n_col):
-            ax = fig.add_subplot(1, n_col, i+1, projection='3d')
-            surf = ax.plot_surface(X, Y, Zs[i], rstride=1, cstride=1,
-                                linewidth=0, antialiased=False)
-            ax.set_xlabel('X Label')
-            ax.set_ylabel('Y Label')
-            ax.set_zlabel('Z Label')
-            ax.set_title(f'Loss for Task {i}')
-        ax.set_title(f' Sum of Losses')
-        plt.savefig(f"./fit_n_head_{n_heads}.png")
+        # n_col,n_row=len(Zs),1
+        # for i in range(n_col):
+        #     ax = fig.add_subplot(1, n_col, i+1, projection='3d')
+        #     surf = ax.plot_surface(X, Y, Zs[i], rstride=1, cstride=1,
+        #                         linewidth=0, antialiased=False)
+        #     ax.set_xlabel('X Label')
+        #     ax.set_ylabel('Y Label')
+        #     ax.set_zlabel('Z Label')
+        #     ax.set_title(f'Loss for Task {i}')
+        # ax.set_title(f' Sum of Losses')
+        # plt.savefig(f"./fit_n_head_{n_heads}.png")
 
 
 
@@ -980,3 +983,81 @@ class AEMLPIncApproximator(nn.Module):
     def forward(self,x):
         return self.network(x)
         
+
+def plot_utilities(thetas_, model,projection="2d",resolution=15):
+    # Plot the optimization
+        n_heads=len(model.predHeads)
+        n_embeddings=model.encoding_dim
+        assert n_embeddings==2
+        fig = plt.figure(figsize=plt.figaspect(1.))
+
+        n_resample=thetas_.shape[0]
+        if n_resample>200:
+            n_resample=max(200,int(thetas_.shape[0]*0.1))
+        thetas=resample(thetas_,n_samples=n_resample)
+        
+        
+        with torch.no_grad():
+             #Compute the solutions of the dataset too
+            Z_thetas=model(thetas.to("cuda:0"))
+            Z_thetas_encoding=torch.squeeze(Z_thetas["encoding"]).detach().cpu().numpy()
+            # Z_thetas_pred=torch.squeeze(Z_thetas["pred"]).detach().cpu().numpy()
+            X = np.linspace(Z_thetas_encoding[:,0].min()-0.5, Z_thetas_encoding[:,0].max()+0.5, resolution)
+            Y = np.linspace(Z_thetas_encoding[:,1].min()-0.5, Z_thetas_encoding[:,1].max()+0.5, resolution)
+
+            # X = np.arange(-5.0, 5.0, 0.5)
+            # Y = np.arange(-5.0, 5.0, 0.5)
+            X, Y = np.meshgrid(X, Y)
+
+
+            X_=torch.tensor(X,dtype=torch.float32)
+            X_=torch.reshape(X_,X.shape+(1,))
+            Y_=torch.tensor(Y,dtype=torch.float32)
+            Y_=torch.reshape(Y_,Y_.shape+(1,))
+            datum=torch.concatenate((X_,Y_),dim=-1)
+
+            Zs=[]
+            Z_sum=0.0
+            for head in model.predHeads:
+                Z=head(datum.reshape(-1,2).to("cuda:0"))
+                Z=torch.squeeze(Z.reshape(X_.shape)).detach().cpu().numpy()
+                Zs.append(Z)
+                Z_sum=Z_sum+Z
+            Zs.append(Z_sum)
+
+           
+        
+        n_col,n_row=len(Zs),1
+        for i in range(n_col):
+            
+            
+            if projection=="3d":
+                ax = fig.add_subplot(1, n_col, i+1, projection='3d')
+                surf = ax.plot_surface(X, Y, Zs[i], rstride=1, cstride=1,
+                                    linewidth=0, antialiased=False)
+                ax.set_xlabel('X Label')
+                ax.set_ylabel('Y Label')
+                ax.set_zlabel('Z Label')
+                ax.set_title(f'Loss for Task {i}')
+            elif projection=="2d":
+                ax = fig.add_subplot(1, n_col, i+1)
+                # Scatter the points of theta
+                ax.scatter(Z_thetas_encoding[:,0],Z_thetas_encoding[:,1])
+                # plot the contour plots
+                CS = ax.contour(X, Y, Zs[i])
+                # make a colorbar for the contour lines
+                CB = fig.colorbar(CS, shrink=0.8)
+                ax.set_xlabel('X Label')
+                ax.set_ylabel('Y Label')
+                # ax.set_zlabel('Z Label')
+                ax.set_title(f'Loss for Task {i}')
+
+
+
+        ax.set_title(f' Sum of Losses')
+        plt.savefig(f"./fit_n_head_{n_heads}.png")
+
+
+
+        # plt.show()
+        # print("Estimation finished")
