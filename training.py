@@ -196,8 +196,9 @@ class Trainer:
         # cls_name=np.arange(len(self.storage.seen_classes_mask))
 
         # cls_name=list(map(lambda x : str(x)+"_cls_"+self.storage.dataloader.dataset.label_dict_inverted[x],cls_name))
-        cls_name=list(map(lambda x : f"Class_{self.storage.dataloader.dataset.label_dict_inverted[x]}",cls_name))
-        plot=dict(zip(cls_name,accuracy))
+        cls_name_=list(map(lambda x : f"Class_{self.storage.dataloader.dataset.label_dict_inverted[x]}",cls_name))
+        plot=dict(zip(cls_name_,accuracy))
+        
 
         self.writer.add_scalars("eval/acc_i/",plot,exp)
 
@@ -207,6 +208,10 @@ class Trainer:
 
         self.after_eval(self.plugins)
         self.taskMetric.reset()
+
+        plot_idx=dict(zip(cls_name,accuracy))
+        print(plot_idx)
+        print(self.storage.confusion_matrix[type][exp])
 
         # Compute the other metrics 
 

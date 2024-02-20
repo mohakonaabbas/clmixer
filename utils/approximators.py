@@ -11,9 +11,9 @@ import copy
 import math
 from sklearn.neighbors import BallTree
 try:
-    from .sampling import EfficientSampler, identity, box_cox, normal , minmax, extract_parameters_grad
+    from .sampling import EfficientSampler, identity, box_cox, normal , minmax, extract_parameters_grad,get_parameters_loss
 except:
-    from sampling import EfficientSampler, identity, box_cox, normal , minmax, extract_parameters_grad
+    from sampling import EfficientSampler, identity, box_cox, normal , minmax, extract_parameters_grad, get_parameters_loss
 
 import matplotlib.pyplot as plt
 
@@ -461,19 +461,19 @@ class AEMLPIncModule(nn.Module):
             #         nn.Linear(encoding_dim,encoding_dim,bias=True),
             #         nn.LeakyReLU(),
             #         nn.Linear(encoding_dim,self.out_dim,bias=True),
-            #         nn.ReLU()
+            #         nn.LeakyReLU()
             #         ))
-            self.predHeads.append(nn.Sequential(
-                basicResidualBlock(encoding_dim,activation=nn.ReLU()),
-                basicResidualBlock(encoding_dim,activation=nn.ReLU()),
-                nn.Linear(encoding_dim,self.out_dim,bias=True),
-                nn.ReLU(),
-                basicResidualBlock(self.out_dim,activation=nn.ReLU()),
-                    ))
+            # self.predHeads.append(nn.Sequential(
+            #     basicResidualBlock(encoding_dim,activation=nn.ReLU()),
+            #     basicResidualBlock(encoding_dim,activation=nn.ReLU()),
+            #     nn.Linear(encoding_dim,self.out_dim,bias=True),
+            #     nn.ReLU(),
+            #     basicResidualBlock(self.out_dim,activation=nn.ReLU()),
+            #         ))
             
-            # self.predHeads.append(nn.Sequential(nn.Linear(encoding_dim,self.out_dim,bias=True),
-            #         nn.ReLU()
-            #         ))
+            self.predHeads.append(nn.Sequential(nn.Linear(encoding_dim,self.out_dim,bias=True),
+                    nn.ReLU()
+                    ))
             
         for head in self.predHeads:
             with torch.no_grad():
@@ -874,11 +874,12 @@ class AEMLPIncApproximator(nn.Module):
                 
 
                 # Losses for reconstruction
-                loss_ae=torch.nn.L1Loss()(outputs["decoding"],inputs)
+                # loss_ae=torch.nn.L1Loss()(outputs["decoding"],inputs)
+                loss_ae=torch.nn.MSELoss()(outputs["decoding"],inputs)
 
                 #Predictions losses
                 # loss_preds=[]
-                loss_regression=0
+                loss_regression=0.0
                 tg_shape=targets.shape
                 targets=targets.reshape(tg_shape[0],tg_shape[-1])
                 # if n_heads==1:
@@ -920,7 +921,7 @@ class AEMLPIncApproximator(nn.Module):
 
                
                 loss=  loss_regression +loss_ae + loss_alignement 
-                # loss=  loss_ae + loss_alignement 
+                # loss=  loss_ae #+ loss_alignement 
                 # rmse_loss=torch.sqrt(loss_pred)
                 # if epoch>1000:
                 #     loss=loss+loss_pred
@@ -931,6 +932,7 @@ class AEMLPIncApproximator(nn.Module):
                 optimizer.step()
 
             writer.add_scalar(f"loss_approximation/train",loss_regression,epoch)
+            writer.add_scalar(f"loss_ae/train",loss_ae,epoch)
         
         self.network=network
 
@@ -939,7 +941,7 @@ class AEMLPIncApproximator(nn.Module):
             for p in self.network.parameters():
                 p.requires_grad = False
 
-        plot_utilities(theta_refs, self.network,projection="2d")
+        plot_utilities(theta_refs, self.network,projection="2d",thetas_losses=theta_refs_raw_losses)
         # # Plot the optimization
         # fig = plt.figure(figsize=plt.figaspect(2.))
         # X = np.arange(-5.0, 5.0, 0.5)
@@ -984,17 +986,18 @@ class AEMLPIncApproximator(nn.Module):
         return self.network(x)
         
 
-def plot_utilities(thetas_, model,projection="2d",resolution=15):
+def plot_utilities(thetas_, model,projection="2d",resolution=15,thetas_losses=None):
     # Plot the optimization
         n_heads=len(model.predHeads)
         n_embeddings=model.encoding_dim
         assert n_embeddings==2
         fig = plt.figure(figsize=plt.figaspect(1.))
 
-        n_resample=thetas_.shape[0]
-        if n_resample>200:
-            n_resample=max(200,int(thetas_.shape[0]*0.1))
-        thetas=resample(thetas_,n_samples=n_resample)
+        # n_resample=thetas_.shape[0]
+        # if n_resample>200:
+        #     n_resample=max(200,int(thetas_.shape[0]*0.1))
+        # thetas=resample(thetas_,n_samples=n_resample)
+        thetas=thetas_
         
         
         with torch.no_grad():
@@ -1023,7 +1026,7 @@ def plot_utilities(thetas_, model,projection="2d",resolution=15):
                 Z=torch.squeeze(Z.reshape(X_.shape)).detach().cpu().numpy()
                 Zs.append(Z)
                 Z_sum=Z_sum+Z
-            Zs.append(Z_sum)
+            # Zs.append(Z_sum)
 
            
         
@@ -1044,17 +1047,20 @@ def plot_utilities(thetas_, model,projection="2d",resolution=15):
                 # Scatter the points of theta
                 ax.scatter(Z_thetas_encoding[:,0],Z_thetas_encoding[:,1])
                 # plot the contour plots
-                CS = ax.contour(X, Y, Zs[i])
+                Z_thetas_pred=torch.squeeze(Z_thetas["pred"][i]).detach().cpu().numpy()
+                levels = np.linspace(np.min(Z_thetas_pred), np.max(Z_thetas_pred), 20)
+                CS = ax.contour(X, Y, Zs[i],levels=levels)
                 # make a colorbar for the contour lines
-                CB = fig.colorbar(CS, shrink=0.8)
+                
                 ax.set_xlabel('X Label')
                 ax.set_ylabel('Y Label')
                 # ax.set_zlabel('Z Label')
                 ax.set_title(f'Loss for Task {i}')
+        CB = fig.colorbar(CS, shrink=0.8)
 
 
 
-        ax.set_title(f' Sum of Losses')
+        # ax.set_title(f' Sum of Losses')
         plt.savefig(f"./fit_n_head_{n_heads}.png")
 
 

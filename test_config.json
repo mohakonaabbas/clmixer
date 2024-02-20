@@ -10,15 +10,15 @@
         "backbone": "None",
         "scenario": "cil"
     },
-    "seed": 31101994,
+    "seed": 31101996,
     "optimisation": {
-        "lr": 0.001,
-        "epochs": 10000,
+        "lr": 0.01,
+        "epochs": 100,
         "optimizer": {
             "type": "adam",
             "weight_decay": 0.0005
         },
-        "batch_size": 128,
+        "batch_size": 32,
         "device": "cuda"
     },
     "human_knowledge": {
@@ -34,11 +34,11 @@
                 "weights": [],
                 "losses":[]
             },
-              "n":10,
-              "epochs":100,
-              "sampling_epochs":100,
+              "n":5,
+              "epochs":1000,
+              "sampling_epochs":20,
               "bs":128,
-              "lr":1e-3
+              "lr":1e-4
       
             },
             "function": "knowledge_retention"

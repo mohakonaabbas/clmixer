@@ -45,6 +45,7 @@ class LossApproxOperation(Operation):
         
         self.past_anchors=None
         self.past_anchors_raw_losses=None
+        self.old_dataloaders=[]
 
 
     def LossApprox_callback(self,reduction="mean"):
@@ -52,6 +53,7 @@ class LossApproxOperation(Operation):
         LossApproxOperation entropy function
         """
         global counter_writer
+        self.old_dataloaders.append(copy.deepcopy(self.inputs.dataloader))
         
         if self.inputs.stage_name == "after_training_epoch":
             # Get model current classifier
@@ -82,10 +84,10 @@ class LossApproxOperation(Operation):
             rec_weights=torch.concat(self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["weights"])
 
 
-            n_resample=rec_weights.shape[0]
-            modulo=n_resample//500
-            rec_losses=rec_losses[::modulo]
-            rec_weights=rec_weights[::modulo]
+            # n_resample=rec_weights.shape[0]
+            # modulo=max(1,n_resample//500)
+            # rec_losses=rec_losses[::modulo]
+            # rec_weights=rec_weights[::modulo]
            
             
         
@@ -223,11 +225,12 @@ class LossApproxOperation(Operation):
             
             
 
-            loss = F.cross_entropy(logits.softmax(dim=1), targets,reduction=reduction)
-            loss=loss*coefs[self.inputs.current_exp]/coefs[:self.inputs.current_exp+1].sum()
+            # loss = F.cross_entropy(logits.softmax(dim=1), targets,reduction=reduction)
+            loss = F.cross_entropy(logits, targets,reduction=reduction)
+            # loss=loss*coefs[self.inputs.current_exp]/coefs[:self.inputs.current_exp+1].sum()
             writer.add_scalar(f"loss_per_task/train_{-1}",loss,counter_writer)
 
-            if len(approximator_models)>0:
+            if len(approximator_models)>0 and True:
                 
                 # Get model current classifier
                 # loss=0.0
@@ -244,22 +247,28 @@ class LossApproxOperation(Operation):
                 weights=torch.reshape(weights,(1,sh[0]))
                 # print(weights)
                 
+                    
                 for approximator in approximator_models:
+                    
                     approximator.eval()
                     # loss_apprx=approximator(weights,kernel=kernel)
                     loss_apprx=approximator(weights)
+                    
                     # i_max=len(loss_apprx)
                     for i,li in enumerate(loss_apprx["pred"]):
+                        with torch.no_grad():
+                            true_loss=sampling.get_parameters_loss(parameter=weights,model=self.inputs.current_network,dataloader=self.old_dataloaders[i])
+                            print(loss_apprx["encoding"],li.item(),true_loss.item())
                         
                         loss+=torch.squeeze(li)*coefs[i]/coefs[:self.inputs.current_exp+1].sum()
                         writer.add_scalar(f"loss_per_task/train_{i}",li,counter_writer)
 
                 # loss=loss/(i+1) 
                 # loss=loss/(i+2) 
-                # print("Overal Loss",loss,"Value Network",torch.mean(torch.tensor(losses_approx)))
-            else:
-                loss = F.cross_entropy(logits.softmax(dim=1), targets,reduction=reduction)
-                loss=loss*coefs[self.inputs.current_exp]/coefs[:self.inputs.current_exp+1].sum()
+            #     # print("Overal Loss",loss,"Value Network",torch.mean(torch.tensor(losses_approx)))
+            # else:
+            #     loss = F.cross_entropy(logits, targets,reduction=reduction)
+                # loss=loss*coefs[self.inputs.current_exp]/coefs[:self.inputs.current_exp+1].sum()
             
             loss_coeff=1.0
             counter_writer+=1

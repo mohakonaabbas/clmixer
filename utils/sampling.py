@@ -78,7 +78,7 @@ def optimize_return_parameter(network,
             targets=targets.to("cuda:0")
 
             outputs=network(inputs)
-            loss = criterion(outputs["logits"].softmax(dim=1),targets)
+            loss = criterion(outputs["logits"],targets)
             # print("%s  " % loss.item())
             optimizer.zero_grad()
             loss.backward()
@@ -114,7 +114,7 @@ def get_parameters_loss(parameter,
         inputs=inputs.to("cuda:0")
         targets=targets.to("cuda:0")
         outputs=model(inputs)
-        loss+=criterion(outputs["logits"].softmax(dim=1),targets)
+        loss+=criterion(outputs["logits"],targets)
         count+=1
 
     
@@ -492,7 +492,7 @@ def value_imposed_sampler_callback(n : int ,
                 targets=targets.to("cuda:0")
                 
                 outputs=Phi(inputs)
-                loss+=F.cross_entropy(outputs["logits"].softmax(dim=1),targets)
+                loss+=F.cross_entropy(outputs["logits"],targets)
                 count+=1
             
             loss_target=loss_target.to("cuda:0")
@@ -596,7 +596,7 @@ def retrain_sampler_callback(n : int ,
                 targets=targets.to("cuda:0")
                 
                 outputs=Phi(inputs)
-                loss=F.cross_entropy(outputs["logits"].softmax(dim=1),targets)
+                loss=F.cross_entropy(outputs["logits"],targets)
                 count+=1
                 
                 loss.backward()
