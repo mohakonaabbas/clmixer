@@ -14,7 +14,9 @@ from torch.utils.tensorboard import SummaryWriter
 writer = SummaryWriter()
 global counter_writer
 counter_writer =0
-
+from sklearn.decomposition import PCA
+from sklearn.cross_decomposition import PLSRegression
+import matplotlib.pyplot as plt
 class LossApproxOperation(Operation):
 # class LossLandscapeOperation():
     def __init__(self,
@@ -83,6 +85,10 @@ class LossApproxOperation(Operation):
             rec_losses=torch.reshape(rec_losses,(rec_losses.shape[0],1))
             rec_weights=torch.concat(self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["weights"])
 
+            rec_weights,rec_losses=sampling.balance_dataset(rec_weights,rec_losses)
+
+            # pca = PCA(n_components=2)
+            
 
             # n_resample=rec_weights.shape[0]
             # modulo=max(1,n_resample//500)
@@ -104,7 +110,7 @@ class LossApproxOperation(Operation):
             
 
 
-            results=sampler.sample(n,callback=cb,
+            results=sampler.sample(5,callback=cb,
                                    callback_hyperparameters={"epochs":training_epochs,"lr":1e-2},
                             rescaling_func= rescaling_func,
                             rescaling_func_hyperparameters={"mean":None,"std":None,"lambda":None,"min":None,"max":None})
@@ -118,6 +124,9 @@ class LossApproxOperation(Operation):
             anchors_losses=results["rescaled_losses"]
             anchors_raw_losses=results["losses"]
             rescaling_func_hyperparameters=results["rescaling_hyperparameters"]
+
+            # anchors,anchors_raw_losses=sampling.balance_dataset(anchors,anchors_raw_losses)
+            
 
             
 
@@ -138,10 +147,6 @@ class LossApproxOperation(Operation):
 
                     stacked_anchors_raw_losses[sh1[0]:sh1[0]+sh2[0],-1]=torch.squeeze(anchors_raw_losses)
                     stacked_anchors_raw_losses[sh1[0]+sh2[0]:,-1]=torch.squeeze(rec_losses)
-
-
-
-
                     # anchors_losses=torch.concatenate([self.past_anchors_raw_losses,anchors_losses,rec_losses.to("cpu")])
                     anchors = torch.concatenate([self.past_anchors,anchors,rec_weights.to("cpu")])
                     # anchors_raw_losses = torch.concatenate([self.past_anchors_raw_losses,anchors_raw_losses,rec_losses.to("cpu")])
@@ -151,9 +156,28 @@ class LossApproxOperation(Operation):
                     anchors = torch.concatenate([anchors,rec_weights.to("cpu")])
                     anchors_raw_losses = torch.concatenate([anchors_raw_losses,rec_losses.to("cpu")])
 
+            pls = PLSRegression(n_components=2)
+            pls.fit(anchors.cpu().numpy(),anchors_raw_losses.cpu().numpy())
+            
+            cb=sampling.dimension_reducer_sampler
+            training_epochs=self.inputs.plugins_storage[self.name]["hyperparameters"]["sampling_epochs"]
+            
+
+
+            results=sampler.sample(n,callback=cb,
+                                   callback_hyperparameters={"projector":pls,"lr":1e-2,"reference":anchors[-1],"steps":5},
+                            rescaling_func= rescaling_func,
+                            rescaling_func_hyperparameters={"mean":None,"std":None,"lambda":None,"min":None,"max":None})
+
             #Backup these sampling
+            anchors=results["parameters"]
+            anchors_projected=results["projected_parameters"]
+            anchors_raw_losses=results["losses"]
+            rescaling_func_hyperparameters=results["rescaling_hyperparameters"]
             self.past_anchors=copy.deepcopy(anchors)
             self.past_anchors_raw_losses=copy.deepcopy(anchors_raw_losses)
+
+            plt.hist(anchors_raw_losses.cpu().numpy().flatten())
 
             # anchors=torch.tensor(anchors)
             # anchors_losses=torch.tensor(anchors_losses)
@@ -173,11 +197,19 @@ class LossApproxOperation(Operation):
             #                                                     theta_refs_raw_losses=anchors_raw_losses)
             
             epochs=self.inputs.plugins_storage[self.name]["hyperparameters"]["epochs"]
-            approximator=approximators.AEMLPIncApproximator(theta_refs=anchors[::self.inputs.current_exp],
+
+            # approximator=approximators.AEMLPIncApproximator(theta_refs=anchors[::self.inputs.current_exp],
+            #             theta_refs_raw_losses=anchors_raw_losses[::self.inputs.current_exp],
+            #             callback_hyperparameters={"epochs":epochs,
+            #                     "lr":1e-3,
+            #                     "mlp_model":approximators.AEMLPIncModule,
+            #                     "optimizer":torch.optim.Adam})
+            
+            approximator=approximators.BasicMLPAprroximator(theta_refs=anchors_projected[::self.inputs.current_exp],
                                     theta_refs_raw_losses=anchors_raw_losses[::self.inputs.current_exp],
                                     callback_hyperparameters={"epochs":epochs,
                                             "lr":1e-3,
-                                            "mlp_model":approximators.AEMLPIncModule,
+                                            "mlp_model":approximators.BasicMLPModule,
                                             "optimizer":torch.optim.Adam})
             
             
@@ -205,7 +237,8 @@ class LossApproxOperation(Operation):
             # self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]=[]
 
             # Save the value network in "approximators"
-            self.inputs.plugins_storage[self.name]["hyperparameters"]["approximators"]=[approximator.eval()]
+            # self.inputs.plugins_storage[self.name]["hyperparameters"]["approximators"]=[approximator.eval()]
+            self.inputs.plugins_storage[self.name]["hyperparameters"]["approximators"]=[(pls,approximator.eval())]
             # counter_writer=0
 
         if self.inputs.stage_name == "before_backward":
@@ -245,10 +278,15 @@ class LossApproxOperation(Operation):
                     
                 sh=weights.shape
                 weights=torch.reshape(weights,(1,sh[0]))
+
+                
                 # print(weights)
                 
                     
                 for approximator in approximator_models:
+                    # fig=approximator.plot
+                    # losses={"true":[],"pred":[]}
+                    # drifts={"x":[],"y":[]}
                     
                     approximator.eval()
                     # loss_apprx=approximator(weights,kernel=kernel)
@@ -257,11 +295,17 @@ class LossApproxOperation(Operation):
                     # i_max=len(loss_apprx)
                     for i,li in enumerate(loss_apprx["pred"]):
                         with torch.no_grad():
+
                             true_loss=sampling.get_parameters_loss(parameter=weights,model=self.inputs.current_network,dataloader=self.old_dataloaders[i])
                             print(loss_apprx["encoding"],li.item(),true_loss.item())
+                            # losses["true"].append(true_loss.item())
+                            # losses["pred"].append(li.item())
+                            # drifts["x"].append(loss_apprx["encoding"][0].item())
+                            # drifts["y"].append(loss_apprx["encoding"][1].item())
                         
                         loss+=torch.squeeze(li)*coefs[i]/coefs[:self.inputs.current_exp+1].sum()
                         writer.add_scalar(f"loss_per_task/train_{i}",li,counter_writer)
+                # plt.scatter(losses["true"],losses["pred"])
 
                 # loss=loss/(i+1) 
                 # loss=loss/(i+2) 

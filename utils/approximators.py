@@ -336,24 +336,25 @@ class BasicMLPModule(nn.Module):
     """
     def __init__(self,
                 input_dim : int,
-                hidden_dim : int = 64,
+                hidden_dim : int = 128,
                 out_dimension : int = 1):
         super().__init__()
 
         self.input_dim=input_dim
         self.out_dim=out_dimension
         self.model=nn.Sequential(nn.Linear(self.input_dim,hidden_dim,bias=True),
-                    nn.ReLU(),
-                    nn.Linear(hidden_dim,hidden_dim//2,bias=True),
-                    nn.ReLU(),
-                    nn.Linear(hidden_dim//2,hidden_dim//4,bias=True),
-                    nn.ReLU(),
-                    nn.Linear(hidden_dim//4,self.out_dim,bias=True)
+                    nn.LeakyReLU(),
+                    basicResidualBlock(hidden_dim),
+                    basicResidualBlock(hidden_dim),
+                    basicResidualBlock(hidden_dim),
+                    basicResidualBlock(hidden_dim),
+                    nn.Linear(hidden_dim,self.out_dim,bias=True),
+                    nn.ReLU()
                     )
     
 
     def forward(self, x):
-        return self.model(x)
+        return [self.model(x)]
     
 
 class AEMLPModule(nn.Module):
@@ -505,8 +506,12 @@ class simpleDataset(torch.utils.data.Dataset):
             self.y=losses
 
             # Statistics
-            self.means={"x":torch.mean(self.X,dim=0),"y":torch.mean(self.y,dim=0)}
-            self.std={"x":torch.std(self.X,dim=0),"y":torch.std(self.y,dim=0)}
+            # self.means={"x":torch.mean(self.X,dim=0),"y":torch.mean(self.y,dim=0)}
+            # self.std={"x":torch.std(self.X,dim=0),"y":torch.std(self.y,dim=0)}
+
+            self.means={"x":torch.min(self.X,dim=0)[0],"y":torch.min(self.y,dim=0)[0]}
+            self.std={"x":torch.max(self.X,dim=0)[0]-torch.min(self.X,dim=0)[0],"y":torch.max(self.y,dim=0)[0]-torch.min(self.y,dim=0)[0]}
+
                 
 
         
@@ -671,7 +676,7 @@ class contrativeIncDataset(torch.utils.data.Dataset):
 
 
 
-class BasicMLPAprroximator:
+class BasicMLPAprroximator(nn.Module):
     def __init__(self,
                 theta_refs : torch.Tensor,
                 theta_refs_raw_losses : torch.Tensor,
@@ -685,6 +690,7 @@ class BasicMLPAprroximator:
             - theta_refs_raw_losses : The losses
             - callback_hyperparameters : the others parameters 
         """
+        super().__init__()
 
         theta_dim=theta_refs.shape[-1]
         network=callback_hyperparameters["mlp_model"](input_dim=theta_dim)
@@ -701,6 +707,7 @@ class BasicMLPAprroximator:
         self.data_mean=dataset.means
         self.data_std=dataset.std
         loader=data.DataLoader(dataset,batch_size=64,shuffle=True)
+        n_heads= theta_refs_raw_losses.shape[-1]
 
         for epoch in pbar:
             
@@ -709,11 +716,14 @@ class BasicMLPAprroximator:
                 targets=targets.to("cuda:0")
                 
                 outputs=network(inputs)
-                loss = loss_criterion(outputs, targets)
+
+                loss = loss_criterion(outputs[0], targets)
                 pbar.set_description("%s  " % loss.item())
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+            writer.add_scalar(f"loss_approximation/train",loss,epoch)
+            # writer.add_scalar(f"loss_ae/train",loss_ae,epoch)
         
         self.network=network
 
@@ -721,8 +731,19 @@ class BasicMLPAprroximator:
         with torch.no_grad():
             for p in self.network.parameters():
                 p.requires_grad = False
+
+        self.plot=simple_plot_utilities((theta_refs-self.data_mean["x"])/self.data_std["x"], 
+                                        self.network,projection="2d",
+                                        thetas_losses=(theta_refs_raw_losses-self.data_mean["y"])/self.data_std["y"],
+                                        mean=self.data_mean,
+                                        std=self.data_std)
+        # # Plot the optimization
+        # fi
         
-        return self.network
+        
+
+    def forward(self,x):
+        return self.network(x)
 
 class AEMLPApproximator(nn.Module):
     def __init__(self,
@@ -853,6 +874,7 @@ class AEMLPIncApproximator(nn.Module):
         dataset=contrativeIncDataset(thetas=theta_refs,losses=theta_refs_raw_losses)
         
         loader=data.DataLoader(dataset,batch_size=64,shuffle=True)
+        self.plot=None
 
         for epoch in pbar:
             
@@ -941,7 +963,7 @@ class AEMLPIncApproximator(nn.Module):
             for p in self.network.parameters():
                 p.requires_grad = False
 
-        plot_utilities(theta_refs, self.network,projection="2d",thetas_losses=theta_refs_raw_losses)
+        self.plot=plot_utilities(theta_refs, self.network,projection="2d",thetas_losses=theta_refs_raw_losses)
         # # Plot the optimization
         # fig = plt.figure(figsize=plt.figaspect(2.))
         # X = np.arange(-5.0, 5.0, 0.5)
@@ -986,7 +1008,7 @@ class AEMLPIncApproximator(nn.Module):
         return self.network(x)
         
 
-def plot_utilities(thetas_, model,projection="2d",resolution=15,thetas_losses=None):
+# def plot_utilities(thetas_, model,projection="2d",resolution=15,thetas_losses=None):
     # Plot the optimization
         n_heads=len(model.predHeads)
         n_embeddings=model.encoding_dim
@@ -998,7 +1020,7 @@ def plot_utilities(thetas_, model,projection="2d",resolution=15,thetas_losses=No
         #     n_resample=max(200,int(thetas_.shape[0]*0.1))
         # thetas=resample(thetas_,n_samples=n_resample)
         thetas=thetas_
-        
+        print(thetas_[-1])
         
         with torch.no_grad():
              #Compute the solutions of the dataset too
@@ -1062,6 +1084,161 @@ def plot_utilities(thetas_, model,projection="2d",resolution=15,thetas_losses=No
 
         # ax.set_title(f' Sum of Losses')
         plt.savefig(f"./fit_n_head_{n_heads}.png")
+        return fig
+
+
+
+        # plt.show()
+        # print("Estimation finished")
+
+def plot_utilities(thetas_, model,projection="2d",resolution=15,thetas_losses=None):
+    # Plot the optimization
+        n_heads=len(model.predHeads)
+        n_embeddings=model.encoding_dim
+        assert n_embeddings==2
+        fig = plt.figure(figsize=plt.figaspect(1.))
+
+        # n_resample=thetas_.shape[0]
+        # if n_resample>200:
+        #     n_resample=max(200,int(thetas_.shape[0]*0.1))
+        # thetas=resample(thetas_,n_samples=n_resample)
+        thetas=thetas_
+        print(thetas_[-1])
+        
+        with torch.no_grad():
+             #Compute the solutions of the dataset too
+            Z_thetas=model(thetas.to("cuda:0"))
+            Z_thetas_encoding=torch.squeeze(Z_thetas["encoding"]).detach().cpu().numpy()
+            # Z_thetas_pred=torch.squeeze(Z_thetas["pred"]).detach().cpu().numpy()
+            X = np.linspace(Z_thetas_encoding[:,0].min()-0.5, Z_thetas_encoding[:,0].max()+0.5, resolution)
+            Y = np.linspace(Z_thetas_encoding[:,1].min()-0.5, Z_thetas_encoding[:,1].max()+0.5, resolution)
+
+            # X = np.arange(-5.0, 5.0, 0.5)
+            # Y = np.arange(-5.0, 5.0, 0.5)
+            X, Y = np.meshgrid(X, Y)
+
+
+            X_=torch.tensor(X,dtype=torch.float32)
+            X_=torch.reshape(X_,X.shape+(1,))
+            Y_=torch.tensor(Y,dtype=torch.float32)
+            Y_=torch.reshape(Y_,Y_.shape+(1,))
+            datum=torch.concatenate((X_,Y_),dim=-1)
+
+            Zs=[]
+            Z_sum=0.0
+            for head in model.predHeads:
+                Z=head(datum.reshape(-1,2).to("cuda:0"))
+                Z=torch.squeeze(Z.reshape(X_.shape)).detach().cpu().numpy()
+                Zs.append(Z)
+                Z_sum=Z_sum+Z
+            # Zs.append(Z_sum)
+
+           
+        
+        n_col,n_row=len(Zs),1
+        for i in range(n_col):
+            
+            
+            if projection=="3d":
+                ax = fig.add_subplot(1, n_col, i+1, projection='3d')
+                surf = ax.plot_surface(X, Y, Zs[i], rstride=1, cstride=1,
+                                    linewidth=0, antialiased=False)
+                ax.set_xlabel('X Label')
+                ax.set_ylabel('Y Label')
+                ax.set_zlabel('Z Label')
+                ax.set_title(f'Loss for Task {i}')
+            elif projection=="2d":
+                ax = fig.add_subplot(1, n_col, i+1)
+                # Scatter the points of theta
+                ax.scatter(Z_thetas_encoding[:,0],Z_thetas_encoding[:,1])
+                # plot the contour plots
+                Z_thetas_pred=torch.squeeze(Z_thetas["pred"][i]).detach().cpu().numpy()
+                levels = np.linspace(np.min(Z_thetas_pred), np.max(Z_thetas_pred), 20)
+                CS = ax.contour(X, Y, Zs[i],levels=levels)
+                # make a colorbar for the contour lines
+                
+                ax.set_xlabel('X Label')
+                ax.set_ylabel('Y Label')
+                # ax.set_zlabel('Z Label')
+                ax.set_title(f'Loss for Task {i}')
+        CB = fig.colorbar(CS, shrink=0.8)
+
+
+
+        # ax.set_title(f' Sum of Losses')
+        plt.savefig(f"./fit_n_head_{n_heads}.png")
+        return fig
+
+
+
+        # plt.show()
+        # print("Estimation finished")
+
+
+def simple_plot_utilities(thetas_2d, model,projection="2d",resolution=15,thetas_losses=None,mean=None,std=None):
+    # Plot the optimization
+
+        fig = plt.figure(figsize=plt.figaspect(1.))
+        
+        with torch.no_grad():
+             #Compute the solutions of the dataset too
+            Z_thetas=model(thetas_2d.to("cuda:0"))
+            # Z_thetas_encoding=torch.squeeze(Z_thetas["encoding"]).detach().cpu().numpy()
+            # Z_thetas_pred=torch.squeeze(Z_thetas["pred"]).detach().cpu().numpy()
+            X = np.linspace(thetas_2d[:,0].min()-0.5, thetas_2d[:,0].max()+0.5, resolution)
+            Y = np.linspace(thetas_2d[:,1].min()-0.5, thetas_2d[:,1].max()+0.5, resolution)
+
+            # X = np.arange(-5.0, 5.0, 0.5)
+            # Y = np.arange(-5.0, 5.0, 0.5)
+            X, Y = np.meshgrid(X, Y)
+
+
+            X_=torch.tensor(X,dtype=torch.float32)
+            X_=torch.reshape(X_,X.shape+(1,))
+            Y_=torch.tensor(Y,dtype=torch.float32)
+            Y_=torch.reshape(Y_,Y_.shape+(1,))
+            datum=torch.concatenate((X_,Y_),dim=-1)
+
+            Zs=[]
+
+
+            Z=model(datum.reshape(-1,2).to("cuda:0"))[0]
+            Z=torch.squeeze(Z).detach().cpu()
+            Z=std["y"]*Z.reshape(X_.shape)+mean["y"]
+            Z=torch.squeeze(Z).detach().cpu().numpy()
+            Zs.append(Z)
+            
+            # Zs.append(Z_sum)
+
+           
+        
+        n_col,n_row=len(Zs),1
+        for i in range(n_col):
+
+            ax = fig.add_subplot(1, n_col, i+1)
+            
+            # plot the contour plots
+            Z_thetas_pred=(std["y"]*(torch.squeeze(Z_thetas[i]).detach().cpu())+mean["y"]).numpy()
+            # Scatter the points of theta
+            colors=(std["y"]*thetas_losses + mean["y"]).cpu().numpy().flatten()
+            # colors=std["y"]*colors + mean["y"]
+            p_thetas=std["x"]*thetas_2d + mean["x"]
+            SC=ax.scatter(p_thetas[:,0],p_thetas[:,1],s=100,c=colors,cmap="viridis")
+            levels = np.linspace(np.min(Z_thetas_pred), np.max(Z_thetas_pred), 20)
+            CS = ax.contour(std["x"][0]*X + mean["x"][0], std["x"][1]*Y + mean["x"][1], Zs[i],levels=levels)
+            # make a colorbar for the contour lines
+            
+            ax.set_xlabel('X Label')
+            ax.set_ylabel('Y Label')
+            # ax.set_zlabel('Z Label')
+            ax.set_title(f'Loss for Task {i}')
+        CB = fig.colorbar(CS, shrink=0.8)
+
+
+
+        # ax.set_title(f' Sum of Losses')
+        plt.savefig(f"./fit.png")
+        return fig
 
 
 

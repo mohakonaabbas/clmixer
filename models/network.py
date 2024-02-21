@@ -14,7 +14,7 @@ from torch.nn import Module
 
 # from inclearn.convnet.classifier import CosineClassifier
 class CosineClassifier(Module):
-    def __init__(self, in_features, n_classes, sigma=True):
+    def __init__(self, in_features, n_classes, sigma=False):
         super(CosineClassifier, self).__init__()
         self.in_features = in_features
         self.out_features = n_classes
@@ -22,6 +22,7 @@ class CosineClassifier(Module):
         if sigma:
             self.sigma = Parameter(torch.Tensor(1))
         else:
+            # self.sigma=None
             self.register_parameter('sigma', None)
         self.reset_parameters()
 
@@ -168,7 +169,11 @@ class ExpandableNet(nn.Module):
 
         if self.classifier is not None and self.reuse_oldfc:
             old_weight_shape=weight.shape
-            fc.weight.data[old_task_classes, :old_weight_shape[1]] = weight[old_task_classes,:]
+            if fc.weight.data.shape[1]==old_weight_shape[1]:
+                fc.weight.data=weight
+            else:
+                fc.weight.data[old_task_classes, :old_weight_shape[1]] = weight[old_task_classes,:]
+
         del self.classifier
         self.classifier = self.maybeToMultipleGpu(fc)
 

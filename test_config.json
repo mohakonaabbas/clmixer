@@ -13,7 +13,7 @@
     "seed": 31101996,
     "optimisation": {
         "lr": 0.01,
-        "epochs": 100,
+        "epochs": 50,
         "optimizer": {
             "type": "adam",
             "weight_decay": 0.0005
@@ -34,11 +34,11 @@
                 "weights": [],
                 "losses":[]
             },
-              "n":5,
-              "epochs":1000,
+              "n":1000,
+              "epochs":50,
               "sampling_epochs":20,
-              "bs":128,
-              "lr":1e-4
+              "bs":32,
+              "lr":1e-3
       
             },
             "function": "knowledge_retention"

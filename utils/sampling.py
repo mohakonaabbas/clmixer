@@ -15,6 +15,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 from scipy.stats import qmc
 warnings.filterwarnings("ignore")
+import matplotlib.pyplot as plt
 #UTILS
 def extract_parameters(model):
     parameter=[]
@@ -148,6 +149,25 @@ def get_batch_loss(parameters,
         losses=torch.concatenate(losses).cpu()
     
     return losses
+
+def balance_dataset(parameters,parameters_loss):
+    """
+    Use a histogram strategy to sample data
+    """
+    local_parameters_losses=parameters_loss.clone().cpu().numpy()
+    bins=np.histogram(local_parameters_losses,density=False,bins=10)[1]
+    binned_losses=np.squeeze(np.digitize(local_parameters_losses,bins))
+    arg_binned_losses=np.arange(len(binned_losses))
+    bins_idx,counts=np.unique(binned_losses,return_counts=True)
+    assert min(counts)>=1
+    choices=[]
+    for bin_idx in bins_idx:
+        choices+=np.random.choice(arg_binned_losses[binned_losses==bin_idx],min(counts)).tolist()
+    
+    balanced_parameters=parameters[choices,:]
+    balanced_parameters_losses=parameters_loss[choices,:]
+    return balanced_parameters,balanced_parameters_losses
+
 # SCALERS
 
 def identity(inputs,
@@ -581,11 +601,16 @@ def retrain_sampler_callback(n : int ,
     collected_theta=[]
     collected_theta_losses=[]
 
+    losses_list=[]
+    parameters_list=[]
+
     for i in tqdm(range(n)):
         parameter=parameters[i,:]
         Phi=insert_parameters(Phi,parameter,train=True)
         Phi.train()
         Phi=Phi.to('cuda:0')
+        collected_theta=[]
+        collected_theta_losses=[]
         for epoch in tqdm(range(epochs)):
             count=1
             avg_loss=0.0
@@ -605,7 +630,10 @@ def retrain_sampler_callback(n : int ,
             # if np.random.choice([True,False],p=[0.5,0.5]):
             collected_theta.append(extract_parameters(Phi).data.view(1,-1))
             collected_theta_losses.append(avg_loss.data.view(1,-1))
-        print(i,avg_loss.data)
+        params,loss_params=balance_dataset(torch.concatenate(collected_theta).cpu(),torch.concatenate(collected_theta_losses).cpu())
+        parameters_list.append(params)
+        losses_list.append(loss_params)
+        # print(i,avg_loss.data)
 
     
 
@@ -613,8 +641,8 @@ def retrain_sampler_callback(n : int ,
     
     
     with torch.no_grad():
-        losses=torch.concatenate(collected_theta_losses).cpu()
-        parameters=torch.concatenate(collected_theta).cpu()
+        losses=torch.concatenate(losses_list).cpu()
+        parameters=torch.concatenate(parameters_list).cpu()
     #     for i in tqdm(range(n)):
     #         loss=get_parameters_loss(parameter=parameters[i,:],model=Phi,dataloader=dataloader)
     #         losses[i]=loss
@@ -634,6 +662,8 @@ def retrain_sampler_callback(n : int ,
             if value is not None:
                 rescaling_func_hyperparameters[key]=torch.tensor(value)
 
+    
+
 
     results={"parameters":parameters,"losses":losses,"rescaled_losses":rescaled_losses,"rescaling_hyperparameters": rescaling_func_hyperparameters,"initial_parameters":coeffs}
 
@@ -641,6 +671,86 @@ def retrain_sampler_callback(n : int ,
     
     
     return results
+
+def dimension_reducer_sampler(n : int ,
+                            dataloader : data.DataLoader,
+                            Phi : torch.nn.Module,
+                            theta_mask : torch.Tensor,
+                            callback_hyperparameters : Dict ,
+                            rescaling_func : Union[None,Callable]=None,
+                            rescaling_func_hyperparameters : Union[None,Dict] = {}):
+    """
+    This sampler is particular
+    It takes as inputs a projector function , usally a PLS dim reducer to dim 2, a starting point for sampling
+    n : int : The number of sample to generate
+    dataloader : data.DataLoader : The dataloader with all the data
+    Phi : torch.nn.Module : The model to condition the fit on
+    theta_mask : torch.tensor : The mask of the parameters to sample
+    rescaling_func : Callable : a function that transform the data
+    rescaling_func_hyperparameters : the hyperparameters needed for rescaling_func
+    """
+
+    projector=callback_hyperparameters["projector"]
+    reference_point=callback_hyperparameters["reference"]
+    lr=callback_hyperparameters["lr"]
+    n_steps=callback_hyperparameters["steps"]
+
+    directions=1-2*np.random.rand(n,n_steps,2)
+    directions=np.cumsum(directions,axis=1)
+    origin=projector.transform(reference_point.reshape(1,-1))
+    directions=origin.reshape(1,1,2)+directions
+    # directions=lr*directions
+
+
+
+    #Get the parameters
+    parameters=projector.inverse_transform(directions.reshape(-1,2))
+
+    out_shape=(directions.shape[0]*directions.shape[1],parameters.shape[-1])
+    n_parameters=out_shape[0]
+    parameters=torch.tensor(parameters.reshape(out_shape),dtype=torch.float32)
+    losses=torch.zeros((n_parameters,1))
+
+    with torch.no_grad():
+        for i in tqdm(range(n_parameters)):
+            loss=get_parameters_loss(parameter=parameters[i,:],model=Phi,dataloader=dataloader)
+            losses[i]=loss
+    # print(list(zip(targets_values,losses)))
+
+    if rescaling_func is not None:
+        rescaled_losses,rescaling_func_hyperparameters=rescaling_func(losses,rescaling_func_hyperparameters)
+    else:
+        rescaled_losses=None
+        rescaling_func_hyperparameters=None
+
+    # Map everything to torch tensor
+    if not isinstance(rescaled_losses,torch.Tensor):
+        rescaled_losses=torch.tensor(rescaled_losses)
+    for key,value in rescaling_func_hyperparameters.items():
+        if not isinstance(value,torch.Tensor):
+            if value is not None:
+                rescaling_func_hyperparameters[key]=torch.tensor(value)
+
+    fig,ax=plt.subplots()
+    # for i in range(n):
+    # .reshape(n,n_steps,1)
+    SC=ax.scatter(directions.reshape(-1,2)[:,0],directions.reshape(-1,2)[:,1],s=100,c=losses.cpu().numpy()[:,0],cmap="viridis")
+    CB = fig.colorbar(SC, shrink=0.8)
+    plt.savefig(f"./sampling.png")
+
+
+    results={"parameters":parameters,
+             "losses":losses,
+             "rescaled_losses":rescaled_losses,
+             "rescaling_hyperparameters": rescaling_func_hyperparameters,
+             "projected_parameters":torch.tensor(directions,dtype=torch.float32).reshape(-1,2)}
+
+
+
+    
+    
+    return results
+
 
 
 
