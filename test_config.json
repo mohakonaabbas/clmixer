@@ -34,8 +34,8 @@
                 "weights": [],
                 "losses":[]
             },
-              "n":1000,
-              "epochs":50,
+              "n":20,
+              "epochs":20,
               "sampling_epochs":20,
               "bs":32,
               "lr":1e-3

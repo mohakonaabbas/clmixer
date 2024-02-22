@@ -346,8 +346,14 @@ class BasicMLPModule(nn.Module):
                     nn.LeakyReLU(),
                     basicResidualBlock(hidden_dim),
                     basicResidualBlock(hidden_dim),
-                    basicResidualBlock(hidden_dim),
-                    basicResidualBlock(hidden_dim),
+                    # basicResidualBlock(hidden_dim),
+                    # basicResidualBlock(hidden_dim),
+                    # basicResidualBlock(hidden_dim),
+                    # basicResidualBlock(hidden_dim),
+                    # basicResidualBlock(hidden_dim),
+                    # basicResidualBlock(hidden_dim),
+                    # basicResidualBlock(hidden_dim),
+                    # basicResidualBlock(hidden_dim),
                     nn.Linear(hidden_dim,self.out_dim,bias=True),
                     nn.ReLU()
                     )
@@ -1185,8 +1191,9 @@ def simple_plot_utilities(thetas_2d, model,projection="2d",resolution=15,thetas_
             Z_thetas=model(thetas_2d.to("cuda:0"))
             # Z_thetas_encoding=torch.squeeze(Z_thetas["encoding"]).detach().cpu().numpy()
             # Z_thetas_pred=torch.squeeze(Z_thetas["pred"]).detach().cpu().numpy()
-            X = np.linspace(thetas_2d[:,0].min()-0.5, thetas_2d[:,0].max()+0.5, resolution)
-            Y = np.linspace(thetas_2d[:,1].min()-0.5, thetas_2d[:,1].max()+0.5, resolution)
+            window=0.5
+            X = np.linspace(thetas_2d[:,0].min()-window, thetas_2d[:,0].max()+window, resolution)
+            Y = np.linspace(thetas_2d[:,1].min()-window, thetas_2d[:,1].max()+window, resolution)
 
             # X = np.arange(-5.0, 5.0, 0.5)
             # Y = np.arange(-5.0, 5.0, 0.5)
@@ -1223,10 +1230,17 @@ def simple_plot_utilities(thetas_2d, model,projection="2d",resolution=15,thetas_
             colors=(std["y"]*thetas_losses + mean["y"]).cpu().numpy().flatten()
             # colors=std["y"]*colors + mean["y"]
             p_thetas=std["x"]*thetas_2d + mean["x"]
-            SC=ax.scatter(p_thetas[:,0],p_thetas[:,1],s=100,c=colors,cmap="viridis")
-            levels = np.linspace(np.min(Z_thetas_pred), np.max(Z_thetas_pred), 20)
-            CS = ax.contour(std["x"][0]*X + mean["x"][0], std["x"][1]*Y + mean["x"][1], Zs[i],levels=levels)
+
+            # SC=ax.scatter(p_thetas[:,0],p_thetas[:,1],s=100,c=colors,cmap="viridis")
+            
+
+            # levels = np.linspace(np.min(Z_thetas_pred)-1, np.max(Z_thetas_pred)+1, 40)
+            levels = np.linspace(np.min(Z_thetas_pred), 5.0, 40)
+            CS = ax.contourf(std["x"][0]*X + mean["x"][0], std["x"][1]*Y + mean["x"][1], Zs[i],levels=levels)
             # make a colorbar for the contour lines
+            # SC=ax.scatter(p_thetas[:,0],p_thetas[:,1],s=50,c='r',alpha=0.9,edgecolors="black")
+            
+            
             
             ax.set_xlabel('X Label')
             ax.set_ylabel('Y Label')
@@ -1238,6 +1252,7 @@ def simple_plot_utilities(thetas_2d, model,projection="2d",resolution=15,thetas_
 
         # ax.set_title(f' Sum of Losses')
         plt.savefig(f"./fit.png")
+        # plt.show()
         return fig
 
 
