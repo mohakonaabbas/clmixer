@@ -34,6 +34,7 @@ class Storage:
         self.plugins_storage={} # A list of dict of plugins parameters. Each plugins such as knowledge distillation temperature, beta for Weight align saves here its own parameters
         self.precedence=[] # A list of integers that represent what plugins should be run before others. 
         self.activated_plugins=None
+        self.temp_var={"trajectory":[]}
         # Memory
         self.training_memory=None # A dict with 2 torch array for samples and labels representing the saved memory 
         self.balanced_training_memory=None # A dict with 2 torhc array representing a subset of a balanced version of the saved memory

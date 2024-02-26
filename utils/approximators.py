@@ -336,7 +336,7 @@ class BasicMLPModule(nn.Module):
     """
     def __init__(self,
                 input_dim : int,
-                hidden_dim : int = 128,
+                hidden_dim : int = 256,
                 out_dimension : int = 1):
         super().__init__()
 
@@ -345,7 +345,7 @@ class BasicMLPModule(nn.Module):
         self.model=nn.Sequential(nn.Linear(self.input_dim,hidden_dim,bias=True),
                     nn.LeakyReLU(),
                     basicResidualBlock(hidden_dim),
-                    basicResidualBlock(hidden_dim),
+                    # basicResidualBlock(hidden_dim),
                     # basicResidualBlock(hidden_dim),
                     # basicResidualBlock(hidden_dim),
                     # basicResidualBlock(hidden_dim),
@@ -702,7 +702,8 @@ class BasicMLPAprroximator(nn.Module):
         network=callback_hyperparameters["mlp_model"](input_dim=theta_dim)
         epochs=callback_hyperparameters["epochs"]
         lr=callback_hyperparameters["lr"]
-        loss_criterion = F.mse_loss
+        # loss_criterion = F.mse_loss
+        loss_criterion = torch.nn.L1Loss()
         network.train()
         network=network.to('cuda:0')
         loss=0.0
@@ -1191,7 +1192,7 @@ def simple_plot_utilities(thetas_2d, model,projection="2d",resolution=15,thetas_
             Z_thetas=model(thetas_2d.to("cuda:0"))
             # Z_thetas_encoding=torch.squeeze(Z_thetas["encoding"]).detach().cpu().numpy()
             # Z_thetas_pred=torch.squeeze(Z_thetas["pred"]).detach().cpu().numpy()
-            window=0.5
+            window=0.0
             X = np.linspace(thetas_2d[:,0].min()-window, thetas_2d[:,0].max()+window, resolution)
             Y = np.linspace(thetas_2d[:,1].min()-window, thetas_2d[:,1].max()+window, resolution)
 
@@ -1234,8 +1235,8 @@ def simple_plot_utilities(thetas_2d, model,projection="2d",resolution=15,thetas_
             # SC=ax.scatter(p_thetas[:,0],p_thetas[:,1],s=100,c=colors,cmap="viridis")
             
 
-            # levels = np.linspace(np.min(Z_thetas_pred)-1, np.max(Z_thetas_pred)+1, 40)
-            levels = np.linspace(np.min(Z_thetas_pred), 5.0, 40)
+            levels = np.linspace(np.min(Z_thetas_pred)-1, np.max(Z_thetas_pred)+1, 40)
+            # levels = np.linspace(np.min(Z_thetas_pred), 5.0, 100)
             CS = ax.contourf(std["x"][0]*X + mean["x"][0], std["x"][1]*Y + mean["x"][1], Zs[i],levels=levels)
             # make a colorbar for the contour lines
             # SC=ax.scatter(p_thetas[:,0],p_thetas[:,1],s=50,c='r',alpha=0.9,edgecolors="black")

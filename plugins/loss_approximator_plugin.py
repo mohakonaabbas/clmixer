@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 class LossApproxOperation(Operation):
 # class LossLandscapeOperation():
     def __init__(self,
-                entry_point =["before_backward","before_training_exp","after_training_epoch"],
+                entry_point =["before_backward","after_backward","before_training_exp","after_training_exp"],
                 inputs={},
             callback=(lambda x:x), 
             paper_ref="",
@@ -57,7 +57,7 @@ class LossApproxOperation(Operation):
         global counter_writer
         self.old_dataloaders.append(copy.deepcopy(self.inputs.dataloader))
         
-        if self.inputs.stage_name == "after_training_epoch":
+        if self.inputs.stage_name == "after_training_exp":
             # Get model current classifier
 
             weights=sampling.extract_parameters(self.inputs.current_network)
@@ -69,10 +69,44 @@ class LossApproxOperation(Operation):
             self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["weights"].append(weights.data)
             self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["losses"].append(loss.data)
 
+            if self.inputs.current_exp>=1:
+                traj=list(map(lambda x:x[0],self.inputs.temp_var["trajectory"]))
+                # losses_bce=list(map(lambda x:x[1].reshape(-1,1),self.inputs.temp_var["trajectory"]))
+                traj=np.concatenate(traj,axis=0)
+                # losses_bce=np.concatenate(losses_bce,axis=0).squeeze()
+
+                approximator_models=self.inputs.plugins_storage[self.name]["hyperparameters"]["approximators"]
+                for (projector,approximator) in approximator_models:
+                    fig=approximator.plot
+                    axes=fig.get_axes()
+                    axes[0].scatter(traj[:,0],traj[:,1],c="r", marker="x", s=2,cmap="viridis")
+                    axes[0].scatter(traj[0:10,0],traj[0:10,1],c="b", marker="x", s=20,cmap="viridis")
+                    axes[0].scatter(traj[-10:,0],traj[-10:,1],c="g", marker="x", s=10,cmap="viridis")
+                    plt.savefig(f"./traj.png")
+                plt.show()
+                self.inputs.temp_var["trajectory"]=[]
+            
+
         if self.inputs.stage_name == "before_training_exp":
             
             if self.inputs.current_exp<=0:
                 return self.inputs
+            # elif self.inputs.current_exp>1:
+            #     traj=list(map(lambda x:x[0],self.inputs.temp_var["trajectory"]))
+            #     # losses_bce=list(map(lambda x:x[1].reshape(-1,1),self.inputs.temp_var["trajectory"]))
+            #     traj=np.concatenate(traj,axis=0)
+            #     # losses_bce=np.concatenate(losses_bce,axis=0).squeeze()
+
+            #     approximator_models=self.inputs.plugins_storage[self.name]["hyperparameters"]["approximators"]
+            #     for (projector,approximator) in approximator_models:
+            #         fig=approximator.plot
+            #         axes=fig.get_axes()
+            #         axes[0].scatter(traj[:,0],traj[:,1],c="r", marker="x", s=2,cmap="viridis")
+            #         plt.savefig(f"./traj.png")
+            #     self.inputs.temp_var["trajectory"]=[]
+            
+
+
 
 
             
@@ -85,7 +119,7 @@ class LossApproxOperation(Operation):
             rec_losses=torch.reshape(rec_losses,(rec_losses.shape[0],1))
             rec_weights=torch.concat(self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["weights"])
 
-            rec_weights,rec_losses=sampling.balance_dataset(rec_weights,rec_losses)
+            # rec_weights,rec_losses=sampling.balance_dataset(rec_weights,rec_losses)
 
             # pca = PCA(n_components=2)
             
@@ -95,7 +129,6 @@ class LossApproxOperation(Operation):
             # rec_losses=rec_losses[::modulo]
             # rec_weights=rec_weights[::modulo]
            
-            
         
             # Free the space 
             self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]["weights"]=[]
@@ -103,15 +136,11 @@ class LossApproxOperation(Operation):
 
             # Sample some data
             sampler=sampling.EfficientSampler(dataloader=self.inputs.dataloader,Phi=copy.deepcopy(self.inputs.current_network),theta_mask=None)
-
             rescaling_func=sampling.identity
             cb=sampling.retrain_sampler_callback
             training_epochs=self.inputs.epochs
-            
-
-
-            results=sampler.sample(3,callback=cb,
-                                   callback_hyperparameters={"epochs":training_epochs,"lr":1e-2},
+            results=sampler.sample(2,callback=cb,
+                                   callback_hyperparameters={"epochs":training_epochs,"lr":1e-2,"exp":self.inputs.current_exp,"save_only":True},
                             rescaling_func= rescaling_func,
                             rescaling_func_hyperparameters={"mean":None,"std":None,"lambda":None,"min":None,"max":None})
 
@@ -125,15 +154,23 @@ class LossApproxOperation(Operation):
             anchors_raw_losses=results["losses"]
             rescaling_func_hyperparameters=results["rescaling_hyperparameters"]
 
-            optima=anchors[training_epochs-1::training_epochs]
+            anchors = torch.concatenate([anchors,rec_weights.to("cpu")])
+            anchors_raw_losses = torch.concatenate([anchors_raw_losses,rec_losses.to("cpu")])
+            # optima=anchors[training_epochs-1::training_epochs]
+
+
+            approximator_models=self.inputs.plugins_storage[self.name]["hyperparameters"]["approximators"]
+            if len(approximator_models)>0:
+                projector=approximator_models[0][0]
+            else:
+                projector=None
+
+            
 
             cb=sampling.random_dimension_reducer_sampler
             # training_epochs=self.inputs.plugins_storage[self.name]["hyperparameters"]["sampling_epochs"]
-            
-
-
             results=sampler.sample(n,callback=cb,
-                                   callback_hyperparameters={"optima":optima,"steps":100},
+                                   callback_hyperparameters={"optima":anchors,"steps":100,"projector":projector,"exp":self.inputs.current_exp},
                             rescaling_func= rescaling_func,
                             rescaling_func_hyperparameters={"mean":None,"std":None,"lambda":None,"min":None,"max":None})
 
@@ -273,17 +310,19 @@ class LossApproxOperation(Operation):
             
 
             # loss = F.cross_entropy(logits.softmax(dim=1), targets,reduction=reduction)
-            loss = F.cross_entropy(logits, targets,reduction=reduction)
+            if len(approximator_models)<1 and True:
+                loss = F.cross_entropy(logits, targets,reduction=reduction)
             # loss=loss*coefs[self.inputs.current_exp]/coefs[:self.inputs.current_exp+1].sum()
-            writer.add_scalar(f"loss_per_task/train_{-1}",loss,counter_writer)
+                writer.add_scalar(f"loss_per_task/train_{-1}",loss,counter_writer)
 
             if len(approximator_models)>0 and True:
                 
                 # Get model current classifier
-                # loss=0.0
+                loss=0.0
+                # loss = 0*F.cross_entropy(logits, targets,reduction=reduction)
                 
                 weights=sampling.extract_parameters(self.inputs.current_network)
-
+                
                 
                 # if not weights.requires_grad:
                 #     print(weights)
@@ -301,26 +340,38 @@ class LossApproxOperation(Operation):
                     projector.to("cuda:0")
                     projector.eval()
                     weights_projected=projector(torch.squeeze(weights))
+                    # print(weights_projected)
+                    mu_x,sigma_x=approximator.data_mean["x"],approximator.data_std["x"]
+                    mu_y,sigma_y=approximator.data_mean["y"],approximator.data_std["y"]
+                    mu_y=mu_y.to("cuda:0")
+                    mu_x=mu_x.to("cuda:0")
+                    sigma_x=sigma_x.to("cuda:0")
+                    sigma_y=sigma_y.to("cuda:0")
+
                     # fig=approximator.plot
                     # losses={"true":[],"pred":[]}
                     # drifts={"x":[],"y":[]}
                     
                     approximator.eval()
                     # loss_apprx=approximator(weights,kernel=kernel)
-                    loss_apprx=approximator(weights_projected)
+                    loss_apprx=approximator((weights_projected-mu_x)/sigma_x)
+
+                    if np.random.rand()>0.5:
+                        self.inputs.temp_var["trajectory"].append([weights_projected.clone().detach().cpu().numpy().reshape(1,2),torch.tensor(loss).clone().detach().cpu().numpy()])
+
                     
                     # i_max=len(loss_apprx)
-                    for i,li in enumerate(loss_apprx["pred"]):
-                        with torch.no_grad():
+                    for i,li in enumerate(loss_apprx):
+                        # with torch.no_grad():
 
-                            true_loss=sampling.get_parameters_loss(parameter=weights,model=self.inputs.current_network,dataloader=self.old_dataloaders[i])
-                            print(loss_apprx["encoding"],li.item(),true_loss.item())
+                            # true_loss=sampling.get_parameters_loss(parameter=weights,model=self.inputs.current_network,dataloader=self.old_dataloaders[i])
+                            # print(weights_projected,(mu_y+sigma_y*li).item(),true_loss.item())
                             # losses["true"].append(true_loss.item())
                             # losses["pred"].append(li.item())
                             # drifts["x"].append(loss_apprx["encoding"][0].item())
                             # drifts["y"].append(loss_apprx["encoding"][1].item())
                         
-                        loss+=torch.squeeze(li)*coefs[i]/coefs[:self.inputs.current_exp+1].sum()
+                        loss+=torch.squeeze(li)#*coefs[i]/coefs[:self.inputs.current_exp+1].sum()
                         writer.add_scalar(f"loss_per_task/train_{i}",li,counter_writer)
                 # plt.scatter(losses["true"],losses["pred"])
 
@@ -337,6 +388,29 @@ class LossApproxOperation(Operation):
             
 
             self.inputs.loss+=loss_coeff*loss
+        
+        if self.inputs.stage_name == "after_backward":
+
+            if self.inputs.current_exp<=10:
+                return self.inputs
+
+
+            
+            approximator_models=self.inputs.plugins_storage[self.name]["hyperparameters"]["approximators"]
+
+            if len(approximator_models)>0 and True:
+                
+                # Get model current classifier
+
+                
+                weights_grad=sampling.extract_parameters_grad(self.inputs.current_network)  
+                projector,approximator = approximator_models[0]
+                projector.to("cuda:0")
+                projector.eval()
+                grad_projected=projector(torch.squeeze(weights_grad))
+                corrected_grads=grad_projected[0]*projector.x+grad_projected[1]*projector.y
+                sampling.insert_parameters_grad(self.inputs.current_network,corrected_grads,train=True)
+                 
         return self.inputs
     
 

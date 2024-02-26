@@ -6,17 +6,17 @@
     "data": {
         "dataset_name": "dummy",
         "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/dummy",
-        "n_experiments": 5 ,
+        "n_experiments": 2 ,
         "backbone": "None",
         "scenario": "cil"
     },
     "seed": 31101996,
     "optimisation": {
-        "lr": 0.01,
-        "epochs": 50,
+        "lr": 0.1,
+        "epochs": 100,
         "optimizer": {
-            "type": "adam",
-            "weight_decay": 0.0005
+            "type": "sgd",
+            "weight_decay": 0.000
         },
         "batch_size": 32,
         "device": "cuda"
@@ -34,8 +34,8 @@
                 "weights": [],
                 "losses":[]
             },
-              "n":20,
-              "epochs":20,
+              "n":4000,
+              "epochs":200,
               "sampling_epochs":20,
               "bs":32,
               "lr":1e-3

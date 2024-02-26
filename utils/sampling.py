@@ -38,11 +38,12 @@ def extract_parameters_grad(model):
     for name,param in model.named_parameters():
             if ("weight" not in name) :
                 continue
+            if not param.requires_grad:
+                print("wierd")
             # parameter+=torch.flatten(param.data).tolist()
             parameter.append(torch.flatten(param.grad))
     parameter=torch.cat(parameter)
-    if not parameter.requires_grad:
-        print("wierd")
+    
 
     return parameter
 
@@ -56,6 +57,20 @@ def insert_parameters(model,parameter,train=False):
             flat_shape=np.prod(param.shape)
             end=start+flat_shape
             param.data=parameter[start:start+flat_shape].reshape(shape)
+            param.requires_grad = train
+            start=end
+    return model
+
+def insert_parameters_grad(model,parameter,train=False):
+    # Update model parameter
+    start=0
+    for name,param in model.named_parameters():
+            if ("weight" not in name) :
+                continue
+            shape=param.shape
+            flat_shape=np.prod(param.shape)
+            end=start+flat_shape
+            param.grad=parameter[start:start+flat_shape].reshape(shape)
             param.requires_grad = train
             start=end
     return model
@@ -275,6 +290,23 @@ def box_cox(inputs,
 
     return outputs, {"mean":mean,"std":std,"lambda":lambda_}
 
+class Projector(nn.Module):
+    def __init__(self, reference_point, x,y) -> None:
+        super().__init__()
+        self.reference_point=nn.parameter.Parameter(reference_point,requires_grad=False)
+        self.x=nn.parameter.Parameter(x,requires_grad=False)
+        self.y=nn.parameter.Parameter(y,requires_grad=False)
+
+
+    def forward(self,parameter):
+        """
+        Projector in he 2d planes defined by the hyperplane
+        """
+        vector=parameter-self.reference_point
+        x=torch.dot(vector,self.x).reshape(-1,1)
+        y=torch.dot(vector,self.y).reshape(-1,1)
+        projected=torch.squeeze(torch.cat([x,y]))
+        return projected
 
 
 
@@ -573,6 +605,7 @@ def retrain_sampler_callback(n : int ,
     """
     epochs=callback_hyperparameters["epochs"]
     lr=callback_hyperparameters["lr"]
+    last_only=callback_hyperparameters["save_only"]
     D=torch.sum(theta_mask).item()
     dimension=len(theta_mask)
     coeffs=torch.rand(n,D)
@@ -584,9 +617,7 @@ def retrain_sampler_callback(n : int ,
     parameters[:,indices]=coeffs
 
     losses=torch.zeros((n,1))
-    
-    
-    losses=torch.zeros((n,1))
+
 
     
     loader = dataloader
@@ -603,14 +634,18 @@ def retrain_sampler_callback(n : int ,
 
     losses_list=[]
     parameters_list=[]
+    save=True
+    
 
     for i in tqdm(range(n)):
+        if last_only:
+            save=False
         parameter=parameters[i,:]
         Phi=insert_parameters(Phi,parameter,train=True)
         Phi.train()
         Phi=Phi.to('cuda:0')
         collected_theta=[]
-        collected_theta_losses=[]
+        # collected_theta_losses=[]
         for epoch in tqdm(range(epochs)):
             count=1
             avg_loss=0.0
@@ -626,18 +661,21 @@ def retrain_sampler_callback(n : int ,
                 
                 loss.backward()
                 optimizer.step()
-                avg_loss=avg_loss+(loss-avg_loss)/count
+                # avg_loss=avg_loss+(loss-avg_loss)/count
             # if np.random.choice([True,False],p=[0.5,0.5]):
-            collected_theta.append(extract_parameters(Phi).data.view(1,-1))
-            collected_theta_losses.append(avg_loss.data.view(1,-1))
+            if epoch==epochs-1:
+                save=True
+            if save:
+                collected_theta.append(extract_parameters(Phi).data.view(1,-1))
+            # collected_theta_losses.append(avg_loss.data.view(1,-1))
         
         
-        params,loss_params=torch.concatenate(collected_theta).cpu(),torch.concatenate(collected_theta_losses).cpu()
+        params=torch.concatenate(collected_theta).cpu()
         
         
         # params,loss_params=balance_dataset(torch.concatenate(collected_theta).cpu(),torch.concatenate(collected_theta_losses).cpu())
         parameters_list.append(params)
-        losses_list.append(loss_params)
+        # losses_list.append(loss_params)
         # print(i,avg_loss.data)
 
     
@@ -646,11 +684,11 @@ def retrain_sampler_callback(n : int ,
     
     
     with torch.no_grad():
-        losses=torch.concatenate(losses_list).cpu()
         parameters=torch.concatenate(parameters_list).cpu()
-    #     for i in tqdm(range(n)):
-    #         loss=get_parameters_loss(parameter=parameters[i,:],model=Phi,dataloader=dataloader)
-    #         losses[i]=loss
+        for i in tqdm(range(n)):
+            loss=get_parameters_loss(parameter=parameters[i,:],model=Phi,dataloader=dataloader)
+            losses[i]=loss
+
     # print(losses)
 
     if rescaling_func is not None:
@@ -757,24 +795,10 @@ def pls_dimension_reducer_sampler(n : int ,
     return results
 
 
-def random_dimension_reducer_sampler(n : int ,
-                            dataloader : data.DataLoader,
-                            Phi : torch.nn.Module,
-                            theta_mask : torch.Tensor,
-                            callback_hyperparameters : Dict ,
-                            rescaling_func : Union[None,Callable]=None,
-                            rescaling_func_hyperparameters : Union[None,Dict] = {}):
-    """
-    This sampler is particular
-    It takes as inputs a projector function , usally a PLS dim reducer to dim 2, a starting point for sampling
-    n : int : The number of sample to generate
-    dataloader : data.DataLoader : The dataloader with all the data
-    Phi : torch.nn.Module : The model to condition the fit on
-    theta_mask : torch.tensor : The mask of the parameters to sample
-    rescaling_func : Callable : a function that transform the data
-    rescaling_func_hyperparameters : the hyperparameters needed for rescaling_func
-    """
 
+def random_walk(n : int ,
+                callback_hyperparameters : Dict):
+    
     optima_points=callback_hyperparameters["optima"]
     
     reference_point=torch.mean(optima_points,dim=0)
@@ -824,6 +848,97 @@ def random_dimension_reducer_sampler(n : int ,
     parameters=torch.tensor(parameters.reshape(out_shape),dtype=torch.float32)
     losses=torch.zeros((n_parameters,1))
 
+    return parameters,losses,directions,(reference_point,axis_0,axis_1)
+
+
+def grid_walk(n : int ,
+                callback_hyperparameters : Dict):
+    
+    
+    projector=callback_hyperparameters["projector"]
+    # n_steps=callback_hyperparameters["steps"]
+    
+    #Coarse
+    n_steps=int(np.sqrt(n))//4
+    xs = torch.linspace(-100, 100, steps=n_steps).flatten()
+    ys = torch.linspace(-100, 100, steps=n_steps).flatten()
+    
+    xs,ys=torch.meshgrid(xs,ys)
+    directions_c=torch.concatenate((xs.reshape(xs.shape+(1,)),ys.reshape(ys.shape+(1,))),dim=2)
+
+
+    #Fine
+    # n_steps=int(np.sqrt(n))
+    xs = torch.linspace(-1, 1, steps=n_steps).flatten()
+    ys = torch.linspace(-1, 1, steps=n_steps).flatten()
+    xs,ys=torch.meshgrid(xs,ys)
+
+    # xs,ys=torch.meshgrid(xs,ys)
+    directions_f=torch.concatenate((xs.reshape(xs.shape+(1,)),ys.reshape(ys.shape+(1,))),dim=2)
+
+    directions=torch.concatenate([directions_c,directions_f],dim=0)
+
+    
+
+
+    
+    xs=directions[:,:,0].flatten()
+    ys=directions[:,:,1].flatten()
+
+    if projector is not None:
+        reference_point=projector.cpu().reference_point.data
+        axis_0,axis_1=projector.cpu().x.data,projector.y.data
+    else:
+        
+        optima_points=callback_hyperparameters["optima"]
+        reference_point=optima_points[0]#torch.mean(optima_points,dim=0)
+        axis_0,axis_1=optima_points[0]-optima_points[1],optima_points[0]-optima_points[2]
+        axis_0,axis_1=axis_0/torch.linalg.norm(axis_0),axis_1/torch.linalg.norm(axis_1)
+
+    
+    
+    
+    out_shape=(xs.shape[0],reference_point.shape[0])
+    D=reference_point.shape[0]
+    
+
+    
+    # directions=lr*directions
+
+    #Get the parameters
+    parameters=reference_point.reshape(1,D) + \
+                xs.reshape(-1,1)*axis_0.reshape(1,D) + \
+                ys.reshape(-1,1)*axis_1.reshape(1,D)
+    
+    n_parameters=out_shape[0]
+    parameters=torch.tensor(parameters.reshape(out_shape),dtype=torch.float32)
+    losses=torch.zeros((n_parameters,1))
+
+    return parameters,losses,directions,(reference_point,axis_0,axis_1),Projector(reference_point=reference_point, x=axis_0,y=axis_1)
+
+
+
+def random_dimension_reducer_sampler(n : int ,
+                            dataloader : data.DataLoader,
+                            Phi : torch.nn.Module,
+                            theta_mask : torch.Tensor,
+                            callback_hyperparameters : Dict ,
+                            rescaling_func : Union[None,Callable]=None,
+                            rescaling_func_hyperparameters : Union[None,Dict] = {}):
+    """
+    This sampler is particular
+    It takes as inputs a projector function , usally a PLS dim reducer to dim 2, a starting point for sampling
+    n : int : The number of sample to generate
+    dataloader : data.DataLoader : The dataloader with all the data
+    Phi : torch.nn.Module : The model to condition the fit on
+    theta_mask : torch.tensor : The mask of the parameters to sample
+    rescaling_func : Callable : a function that transform the data
+    rescaling_func_hyperparameters : the hyperparameters needed for rescaling_func
+    """
+    parameters,losses,directions,(reference_point,axis_0,axis_1),projector=grid_walk(n=n,callback_hyperparameters=callback_hyperparameters)
+    n_parameters=parameters.shape[0]
+
+
     with torch.no_grad():
         for i in tqdm(range(n_parameters)):
             loss=get_parameters_loss(parameter=parameters[i,:],model=Phi,dataloader=dataloader)
@@ -851,25 +966,10 @@ def random_dimension_reducer_sampler(n : int ,
     
     SC=ax.scatter(directions.reshape(-1,2)[:,0],directions.reshape(-1,2)[:,1],s=50,c=losses.cpu().numpy()[:,0],cmap="viridis")
     CB = fig.colorbar(SC, shrink=0.8)
-    plt.savefig(f"./sampling.png")
+    exp=callback_hyperparameters["exp"]
+    plt.savefig(f"./sampling_N_{exp}.png")
 
-    class projector(nn.Module):
-        def __init__(self, reference_point=reference_point, x=axis_0,y=axis_1) -> None:
-            super().__init__()
-            self.reference_point=nn.parameter.Parameter(reference_point,requires_grad=False)
-            self.x=nn.parameter.Parameter(x,requires_grad=False)
-            self.y=nn.parameter.Parameter(y,requires_grad=False)
 
-    
-        def forward(self,parameter):
-            """
-            Projector in he 2d planes defined by the hyperplane
-            """
-            vector=parameter-self.reference_point
-            x=torch.dot(vector,self.x).reshape(-1,1)
-            y=torch.dot(vector,self.y).reshape(-1,1)
-            projected=torch.squeeze(torch.cat([x,y]))
-            return projected
 
     # projector(parameter=parameters[0])
 
@@ -878,7 +978,7 @@ def random_dimension_reducer_sampler(n : int ,
              "rescaled_losses":rescaled_losses,
              "rescaling_hyperparameters": rescaling_func_hyperparameters,
              "projected_parameters":torch.tensor(directions,dtype=torch.float32).reshape(-1,2),
-             "projector":projector()}
+             "projector":projector}
 
 
 
