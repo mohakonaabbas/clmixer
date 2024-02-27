@@ -1,151 +1,347 @@
+
 from .base_plugin import Operation
 from torch.nn import functional as F
-from torch import nn
-import torch
-from torch.utils import data
-from tqdm import tqdm
 import copy
-from typing import List, Tuple
-from ..storage import Storage
-from .finetune_last_layer_plugin import FinetuneOperation
-from .random_memory_plugin import RandomMemoryUpdaterOperation
-import numpy as np
-from functools import reduce
+import torch
 
+from typing import List, Tuple
+from sklearn.utils import resample
+
+import numpy as np
 from datasets import base
 from utils import sampling,approximators
+from torch.utils.tensorboard import SummaryWriter
+writer = SummaryWriter()
+global counter_writer
+counter_writer =0
+from sklearn.decomposition import PCA
+from sklearn.cross_decomposition import PLSRegression
+import matplotlib.pyplot as plt
+from torch import nn
+from scipy.stats import qmc
+from typing import Dict, List
+from tqdm import tqdm
+
+class Projector(nn.Module):
+    def __init__(self, 
+                 reference_point : torch.Tensor,
+                d_hyperplane : torch.Tensor) -> None:
+        """
+        reference_point : The centered point in full space D
+        d_hyperplane : Plane of projection in Dxd space d<<D
+
+        
+        """
+        super().__init__()
+        self.reference_point=nn.parameter.Parameter(reference_point,requires_grad=False)
+        self.hyperplane=nn.parameter.Parameter(d_hyperplane,requires_grad=False)
+        self.d=self.hyperplane.shape[1]
+
+    def forward(self,parameter:torch.Tensor):
+        """
+        1. Project a parameter in full space D to small d space
+        """
+        d_parameter= parameter-self.reference_point
+        projected=torch.dot(d_parameter,self.hyperplane).squeeze()
+        return projected
+    
+    def unproject(self,parameter:torch.Tensor):
+        """
+        1. Project a parameter in d space D to  D space
+        """
+
+        reprojected=torch.dot(parameter.reshape(1,-1),self.hyperplane).squeeze()+self.reference_point
+        reprojected= parameter+self.reference_point
+        return reprojected
+
+    
+class subspaceClassifierModel(nn.Module):
+    def __init__(self, reference_point:torch.Tensor,
+                 d_hyperplane: torch.Tensor,
+                current_model_checkpoint: nn.Module) -> None:
+        """
+        reference_point : The centered point in full space D
+        d_hyperplane : Plane of projection in Dxd space d<<D
+        current_model_checkpoint : true neural network architecture
+        
+        """
+        super().__init__()
+        #Get the current model architecture
+        self.reference_point=reference_point
+        self.model_arch=current_model_checkpoint.clone()
+        parameter=self.flatten_architecture().reshape(1,-1)
+        d_parameter= parameter-self.reference_point
+        weight_init=torch.dot(d_parameter,d_hyperplane).squeeze()
+
+        self.weight=nn.parameter.Parameter(weight_init,requires_grad=True)
+        self.hyperplane=nn.parameter.Parameter(d_hyperplane,requires_grad=False)
+
+    def forward(self,x:torch.Tensor):
+        """
+        1. Rebuild the actual network
+        2. Querry the model
+        """
+
+        #Iinsert the parameters in the model
+        parameter=torch.dot(self.hyperplane,self.weight)+self.reference_point
+        self.rebuild_architecture(parameter=parameter)
+        return self.model_arch(x)
+
+    def flatten_architecture(self):
+        parameter=[]
+        start=0
+        for name,param in self.model_arch.named_parameters():
+            if ("weight" not in name) or ("bias" not in name):
+                continue
+            # parameter+=torch.flatten(param.data).tolist()
+            parameter.append(torch.flatten(param))
+        parameter=torch.cat(parameter)
+        parameter.requires_grad=False
+        return parameter.data
+    
+    def rebuild_architecture(self,parameter:torch.Tensor):
+        start=0
+        for name,param in self.model_arch.named_parameters():
+            if ("weight" not in name) or ("bias" not in name):
+                continue
+            shape=param.shape
+            flat_shape=np.prod(param.shape)
+            end=start+flat_shape
+            param.data=parameter[start:start+flat_shape].reshape(shape)
+            param.requires_grad = True
+            start=end
+
+
 
 class LossLandscapeOperation(Operation):
 # class LossLandscapeOperation():
     def __init__(self,
-                entry_point =["before_backward","after_backward","after_training_exp"],
+                entry_point =["before_backward","before_training_exp","after_training_exp","after_training_epoch"],
                 inputs={},
             callback=(lambda x:x), 
             paper_ref="",
                 is_loss=True):
         super().__init__(entry_point, inputs, callback, paper_ref,is_loss)
 
-        self.set_callback(self.lanscape_callback)
+        self.set_callback(self.LossApprox_callback)
         self.set_config_template({
       "name": self.__class__.__name__,
       "hyperparameters": {
         "approximators": [],
-        "current_task_loss_dataset":[],
+        "current_task_loss_dataset":{
+                "weights": [],
+                "losses":[]
+            },
         "n":10**4,
-        "epochs":100,
-        "bs":32,
-        "lr":1e-3
+        "d":2
+        # "bs":32,
+        # "lr":1e-3
 
       },
       "function": "knowledge_retention"
     })
+        self.device=None
+        self.past_anchors=None
+        self.past_anchors_raw_losses=None
+        self.old_dataloaders=[]
 
-
-    def lanscape_callback(self,reduction="mean"):
-        """
-        Landscape entropy function
-        """
         
-        if self.inputs.stage_name == "after_backward":
-            # Get model current classifier
-            param_list=[]
-            for name,param in self.inputs.current_network.named_parameters():
-                if ("weight" in name) : # or ("bias" in name):
-                    param_list.append(torch.flatten(copy.copy(param.data)))
-            weights=torch.cat(param_list)
-            self.input_shape=weights.shape
-            loss=self.inputs.loss
-            self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"].append((weights,loss.data))
+        #Dimensionality reduction
 
+        # Projector
+        self.projector=None
+        # History dictionary
+        self.History={"initial_trajectory":{"parameters":[],"losses":[]},
+                      "dataloaders":[],
+                      "approximators":[],
+                      "current_trajectory":{"parameters":[],"losses":[]}}
+
+
+        #Classifier
+        self.classifier=None
+
+    def compute_projector(self,
+                          d : int,
+                          training_trajectory: Dict):
+        """
+        This methods create a projection from the original dimension of network parameters to d dimension
+        Using PLS, we restrict to the d first axis the projection.
+        Args
+        - d : int ,the target dimension
+        - training_trajectory, a Dict = {"parameters" : parameters : torch.Tensor} representing the trajectory of training
+        
+        """
+
+        pls = PLSRegression(n_components=d)
+        pls.fit(training_trajectory["parameters"].cpu().numpy(),training_trajectory["losses"].cpu().numpy())
+        d_hyperplane=pls.x_rotations_
+        d_hyperplane=torch.tensor(d_hyperplane,dtype=torch.float32)
+        reference_point=training_trajectory["parameters"][-1]
+
+        projector=Projector(reference_point=reference_point,d_hyperplane=d_hyperplane)
+        return projector
+
+    def compute_subspace_classifier(self,
+                                    projector: Projector,
+                                    current_model : nn.Module):
+        """
+        This methods create a model compatible with the plugin
+        """
+        classifier= subspaceClassifierModel(reference_point =projector.reference_point,
+                                            d_hyperplane=projector.hyperplane,
+                                            current_model_checkpoint=current_model)
+        
+        return classifier
+
+    def latin_hypercube_sampling(self,
+                n : int =1000,
+                coarse_limit :int =100,
+                fine_limit : int=1):
+        
+        projector=self.projector
+        Phi  = copy.deepcopy(self.inputs.current_network)
+        dataloader = self.inputs.dataloader
+        
+
+        if projector.d>2:
+            #Create a grid of points uniformely spaced in d-space
+            sampler=qmc.LatinHypercube(d=D)
+            coeffs=sampler.random(n)
+            directions=torch.tensor(coeffs,dtype=torch.float32)
+        elif projector.d==2:
+            #Coarse
+            n_steps=int(np.sqrt(n))
+            xs = torch.linspace(-coarse_limit, coarse_limit, steps=n_steps).flatten()
+            ys = torch.linspace(-fine_limit, fine_limit, steps=n_steps).flatten()
+            xs,ys=torch.meshgrid(xs,ys)
+            directions_c=torch.concatenate((xs.reshape(xs.shape+(1,)),ys.reshape(ys.shape+(1,))),dim=2)
+            #Fine
+            xs = torch.linspace(-1, 1, steps=n_steps).flatten()
+            ys = torch.linspace(-1, 1, steps=n_steps).flatten()
+            xs,ys=torch.meshgrid(xs,ys)
+            directions_f=torch.concatenate((xs.reshape(xs.shape+(1,)),ys.reshape(ys.shape+(1,))),dim=2)
+            directions=torch.concatenate([directions_c,directions_f],dim=0).reshape(-1,2)
+
+        
+            parameters=projector.unproject(directions.to(self.device))
+            n_parameters=parameters.shape[0]
+
+            losses=torch.zeros((n_parameters,1))
+
+            with torch.no_grad():
+                for i in tqdm(range(n_parameters)):
+                    loss=sampling.get_parameters_loss(parameter=parameters[i,:],model=Phi,dataloader=dataloader)
+                    losses[i]=loss
+            
+            if projector.d==2:
+                fig,ax=plt.subplots()
+        
+                SC=ax.scatter(directions.reshape(-1,2)[:,0],directions.reshape(-1,2)[:,1],s=50,c=losses.cpu().numpy()[:,0],cmap="viridis")
+                CB = fig.colorbar(SC, shrink=0.8)
+                exp=self.inputs.exp
+                plt.savefig(f"./sampling_N_{exp}.png")
+
+            results={"parameters":parameters,
+                    "losses":losses,
+                    "projected_parameters":torch.tensor(directions,dtype=torch.float32).reshape(-1,2),
+                    "projector":projector}
+            return results
+
+    def LossApprox_callback(self,reduction="mean"):
+        """
+        LossApproxOperation entropy function
+        """
+        global counter_writer
+        
+        if self.inputs.stage_name == "after_training_epoch":
+
+            if self.inputs.current_exp!=0:
+                return self.inputs
+
+            weights=sampling.extract_parameters(self.inputs.current_network)
+            loss=sampling.get_parameters_loss(parameter=weights,model=self.inputs.current_network,dataloader=self.inputs.dataloader)
+    #         
+            sh=weights.shape
+            weights=torch.reshape(weights,(1,sh[0]))
+
+            self.History["initial_trajectory"]["parameters"].append(weights.data)
+            self.History["initial_trajectory"]["losses"].append(loss.data)
+       
         if self.inputs.stage_name == "after_training_exp":
-            #Finetune the model
-            finetune_operation=FinetuneOperation(inputs=self.inputs)
+            self.History["dataloaders"].append(copy.deepcopy(self.inputs.dataloader))
+            # Get model current classifier
+            if self.inputs.current_exp>=1:
+                traj=self.History["current_trajectory"]["parameters"]
+                # losses_bce=list(map(lambda x:x[1].reshape(-1,1),self.inputs.temp_var["trajectory"]))
+                traj=np.concatenate(traj,axis=0)
+                # losses_bce=np.concatenate(losses_bce,axis=0).squeeze()
 
-            update={finetune_operation.name:{"hyperparameters":{}}}
-            finetune_operation.inputs.plugins_storage.update(update)
+                approximator_models=self.History["approximators"]
+                for approximator in approximator_models:
+                    fig=approximator.plot
+                    axes=fig.get_axes()
+                    axes[0].scatter(traj[:,0],traj[:,1],c="r", marker="x", s=2,cmap="viridis")
+                    axes[0].scatter(traj[0:10,0],traj[0:10,1],c="b", marker="x", s=20,cmap="viridis")
+                    axes[0].scatter(traj[-10:,0],traj[-10:,1],c="g", marker="x", s=10,cmap="viridis")
+                    plt.savefig(f"./traj.png")
+                plt.show()
+                traj=self.History["current_trajectory"]["parameters"]
             
-            update={"finetune_epochs":finetune_operation.config_template["hyperparameters"]["finetune_epochs"]}
-            finetune_operation.inputs.plugins_storage[finetune_operation.name]["hyperparameters"].update(update)
-            update={"finetune_bs":finetune_operation.config_template["hyperparameters"]["finetune_bs"]}
-            finetune_operation.inputs.plugins_storage[finetune_operation.name]["hyperparameters"].update(update)
-            update={"finetune_lr":finetune_operation.config_template["hyperparameters"]["finetune_lr"]}
-            finetune_operation.inputs.plugins_storage[finetune_operation.name]["hyperparameters"].update(update)
-            update={"cls_budget":finetune_operation.config_template["hyperparameters"]["cls_budget"]}
-            finetune_operation.inputs.plugins_storage[finetune_operation.name]["hyperparameters"].update(update)
+        if self.inputs.stage_name == "before_training_exp":
+            self.device=self.inputs.current_network.device
+            # Here we compute our approximation of the loss landscape before training
             
-            finetune_operation.finetune_callback()
+            #If we just started , we don't need an approximation
+            if self.inputs.current_exp==0:
+                return self.inputs
+            elif self.inputs.current_exp ==1 : 
+                # We are about to begin the second task.
+                # We need to estimate for once and all differents quantities
+                # 1. The projector fonction alongside the last trajectory
+                # 2. Update the trained network with classifier with the classifier which optimise only in the reduce dimension
 
+                d=self.inputs.plugins_storage[self.name]["hyperparameters"]["d"]
+                d=int(d)
 
-            param_list=[]
-            for name,param in self.inputs.current_network.named_parameters():
-                if ("weight" in name) : # or ("bias" in name):
-                    param_list.append(torch.flatten(copy.copy(param.data)))
-            finetuned_weights=torch.cat(param_list)
-            self.input_shape=finetuned_weights.shape
-            loss=self.inputs.loss
-
-            # Create a dataset from the current_task_loss_dataset
-            trajectory=[[(finetuned_weights,loss.data)],self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]]
-           
+                self.projector=self.compute_projector(d=d,
+                                       training_trajectory=self.History["initial_trajectory"]).to(self.device)
+                self.classifier=self.compute_subspace_classifier(projector=self.Projector,
+                                                                 current_model=self.inputs.current_network).to(self.device)
+                self.inputs.current_network.classifier=self.classifier
             
+            
+            # Our reccurent task here is to sample datas in the d-space and build an approximator to estimate the data
+            # We apply the next procedure
+            # 1. Sample on a d-latin hypercube n datas, n is a hyperparameters given by the User 
+            # 2. Using the sampling, train the approximator 
+            # 2. Back up this approximator in the History
+            #We need estimated the loss of the last task
 
-            # Create a new approximator model to approximate the loss landscape
-            approximator=LandScapeModel(input_dim=self.input_shape[0])
             n=self.inputs.plugins_storage[self.name]["hyperparameters"]["n"]
             n=int(n)
+            results=self.latin_hypercube_sampling(n=n,coarse_limit=100.0,fine_limit=1.0)
+            #Backup these sampling
 
-            # Create a model reference
-            model_reference=copy.deepcopy(self.inputs.current_network)
-            with torch.no_grad():
-                for p in model_reference.parameters():
-                    p.requires_grad = False
-            model_reference.eval()
-
-            # Create a dataset to test the variation on
-            random_memory_operation=RandomMemoryUpdaterOperation(inputs=self.inputs)
-            X_balanced,y_balanced=random_memory_operation.balanced_random_shuffle(100)
-
-            # Retrain the last layer
-
-            # Assign the memory to the balanced dataset
-
-            loader = data.DataLoader(base.simpleDataset(X=X_balanced,
-                                                        y= y_balanced,
-                                                        predictor=self.inputs.dataloader.dataset.backbone),
-                                                        batch_size=32,
-                                                        shuffle=True)
+            anchors_projected=results["projected_parameters"]
+            anchors_raw_losses=results["losses"]
             
-
-            
-            # Expand the dataset by "efficient" high dimensionnal sampling
-            sampler=EfficientSampler(trajectory,model_reference,loader)
-            X,y=sampler._gen_sample(n)
-
-            # TRain it
+            #Train the approximator
             epochs=self.inputs.plugins_storage[self.name]["hyperparameters"]["epochs"]
-            bs=self.inputs.plugins_storage[self.name]["hyperparameters"]["bs"]
-            lr=self.inputs.plugins_storage[self.name]["hyperparameters"]["lr"]
-        
+            approximator=approximators.BasicMLPAprroximator(theta_refs=anchors_projected,
+                                    theta_refs_raw_losses=anchors_raw_losses,
+                                    callback_hyperparameters={"epochs":epochs,
+                                            "lr":1e-3,
+                                            "mlp_model":approximators.BasicMLPModule,
+                                            "optimizer":torch.optim.Adam})
 
-            trainer=approximatorTrainer(network=approximator,
-                                        epochs=epochs,
-                                        bs=bs,
-                                        lr=lr,
-                                        X=X,
-                                        y=y)
-            
-            with torch.no_grad():
-                approximator=trainer.network
-                for p in approximator.parameters():
-                    p.requires_grad = False
-            # Reinitialize the storage
-
-            self.inputs.plugins_storage[self.name]["hyperparameters"]["current_task_loss_dataset"]=[]
-
-            # Save the value network in "approximators"
-            self.inputs.plugins_storage[self.name]["hyperparameters"]["approximators"].append(approximator.eval())
+            approximator=approximator.to(self.device)
+            self.History["approximators"].append(approximator.eval())
 
         if self.inputs.stage_name == "before_backward":
+
+            # kernel=approximators.TriangleKernel
+            coefs=self.inputs.dataloader.dataset.splits.sum(axis=0)
+
 
             # Get the logits and the targets
             logits=self.inputs.logits
@@ -153,180 +349,50 @@ class LossLandscapeOperation(Operation):
 
             #Get the old loss approximators
             # A list of neural networks models approximating the loss of old tasks
-            approximator_models=self.inputs.plugins_storage[self.name]["hyperparameters"]["approximators"]
+            approximator_models=self.History["approximators"]
             
-            loss = F.cross_entropy(logits.softmax(dim=1), targets,reduction=reduction)
+            if len(approximator_models)<1 :
+                loss = F.cross_entropy(logits, targets,reduction=reduction)
+                loss=loss*coefs[self.inputs.current_exp]/coefs[:self.inputs.current_exp+1].sum()
+                writer.add_scalar(f"loss_per_task/train_{-1}",loss,counter_writer)
 
-            if len(approximator_models)>0:
-                    # Get model current classifier
-                param_list=[]
-                for name,param in self.inputs.current_network.named_parameters():
-                    if ("weight" in name) : # or ("bias" in name):
-                        param_list.append(torch.flatten(param))
-                weights=torch.cat(param_list)
+            if len(approximator_models)>0 and True:
+                
+                # Get model current classifier
+                # loss=0.0
+                loss = F.cross_entropy(logits, targets,reduction=reduction)
+                weights=self.inputs.current_network.classifier.weight
+                sh=weights.shape
+                weights=torch.reshape(weights,(1,sh[0]))
 
-            for approximator in approximator_models:
-                approximator.eval()
-                loss+=approximator(weights.reshape(1,-1)).squeeze()
-            
+                for approximator in approximator_models:
+
+                    mu_x,sigma_x=approximator.data_mean["x"],approximator.data_std["x"]
+                    mu_y,sigma_y=approximator.data_mean["y"],approximator.data_std["y"]
+                    mu_y=mu_y.to("cuda:0")
+                    mu_x=mu_x.to("cuda:0")
+                    sigma_x=sigma_x.to("cuda:0")
+                    sigma_y=sigma_y.to("cuda:0")
+
+                    
+                    approximator.eval()
+                    # loss_apprx=approximator(weights,kernel=kernel)
+                    loss_apprx=approximator((weights-mu_x)/sigma_x)
+
+                    if np.random.rand()>0.5:
+                        self.History["current_trajectory"].append([weights.clone().detach().cpu().numpy().reshape(1,2),
+                                                                   torch.tensor(loss).clone().detach().cpu().numpy()])
+
+                    for i,li in enumerate(loss_apprx):
+                        loss+=torch.squeeze(li)*coefs[i]/coefs[:self.inputs.current_exp+1].sum()
+                        writer.add_scalar(f"loss_per_task/train_{i}",li,counter_writer)
+                
             loss_coeff=1.0
+            counter_writer+=1
+
+            
 
             self.inputs.loss+=loss_coeff*loss
+                  
         return self.inputs
     
-
-class LandScapeModel(nn.Module):
-    """
-    A simple MLP wich maps all parameters from the classifier to the loss function on a certain dataset X
-    """
-    def __init__(self,
-                input_dim : int,
-                out_dimension : int = 1):
-        super().__init__()
-
-        self.input_dim=input_dim
-        self.out_dim=out_dimension
-        self.model=nn.Sequential(nn.Linear(self.input_dim,self.out_dim,bias=True),
-                      nn.BatchNorm1d(self.out_dim),
-                      nn.ReLU(),
-                      nn.Dropout(p=0.1))
-    
-
-    def forward(self, x):
-        return self.model(x)
-    
-
-class EfficientSampler:
-    def __init__(self,
-                trajectories : List[List[Tuple]],
-                model_reference,
-                loss_evaluation_dataset ):
-        """
-        Args:
-            - trajectories : A list of list. each nested list is composed of tuples of differents trajectories.
-            A typical trajectories is [[finetuned model,loss],[start ... end ]]
-            - model_reference : The model to change during inference
-            - loss_evaluation_dataset : A dataset to evaluate the choices of parameters on
-
-        
-        """
-        self.references_trajectories=trajectories
-        self.model_reference= model_reference
-        self.eval_dataset=loss_evaluation_dataset
-            
-
-    def _gen_sample(self, n):
-        """
-        This functions takes in inputs a list of trajectories of training
-        And augment it to generate N samples
-        """
-        print("AUGMENTATION NOT IMPLEMENTED YET , ")
-
-        #Get a triangle sampling
-        sampling=self.triangle_sampling(n)
-        sampling=sampling.to("cuda:0")
-        theta0,theta1,theta2=self.references_trajectories[0][0][0],self.references_trajectories[1][0][0],self.references_trajectories[1][-1][0]
-        sampled_parameters= sampling[:,0].reshape(-1,1)*theta0+ sampling[:,1].reshape(-1,1)*theta1+ sampling[:,2].reshape(-1,1)*theta2
-        #We need to evaluate these parameters to get their loss now
-        sampled_trajectories=[]
-        for i in range(n):
-            loss=self.get_parameters_loss(sampled_parameters[i,:],self.model_reference)
-            sampled_trajectories.append((sampled_parameters[i,:],loss.data))
-        self.references_trajectories.append(sampled_trajectories)
-        trajectory=reduce(lambda a, b: a+b, self.references_trajectories)
-        X=torch.cat(list(map(lambda x:x[0].reshape(1,-1),trajectory)),axis=0)
-        y=torch.cat(list(map(lambda x:x[1].reshape(1,-1),trajectory)),axis=0)
-        return X,y
-
-    def triangle_sampling(self,n):
-        coeffs=torch.rand(n,3)
-        coeffs=coeffs/torch.sum(coeffs,dim=1).reshape(-1,1)
-        return coeffs
-    
-    def get_parameters_loss(self,parameter,model):
-
-        # Update model parameter
-        start=0
-        for name,param in model.named_parameters():
-                if ("weight" not in name) :
-                    continue
-                shape=param.shape
-                flat_shape=np.prod(param.shape)
-                end=start+flat_shape
-                param.data=parameter[start:start+flat_shape].reshape(shape)
-                param.requires_grad = False
-                start=end
-
-
-        # Test on the data loader
-        count=1
-        loss=0.0
-        for inputs, targets in self.eval_dataset:
-            inputs=inputs.to("cuda:0")
-            targets=targets.to("cuda:0")
-            outputs=model(inputs)
-            loss+=F.cross_entropy(outputs["logits"].softmax(dim=1),targets)
-            count+=1
-        return loss/count
-
-        
-
-class approximatorTrainer:
-    def __init__(self,
-                 network,
-                 epochs,
-                 bs,
-                 lr,
-                 X,
-                 y):
-        """
-        Args :
-            epochs : Epochs
-            bs: batch size
-            lr:learning rate
-            X: weights to regress. Size =  encoder output x Classifier outputs
-            y : loss value to regress to
-            criterion : regression criterion
-        
-        """
-        
-        # Create a balanced dataset
-
-        loader = data.DataLoader(simpleDataset(X=X,y= y),shuffle=True,batch_size=bs)
-        
-        loss_criterion = F.mse_loss
-        network.train()
-        network=network.to('cuda:0')
-        loss=0.0
-        optimizer = torch.optim.SGD(network.parameters(), lr=lr)
-        pbar=tqdm(range(epochs))
-
-        for epoch in pbar:
-            
-            for inputs,targets in loader:
-
-                outputs=network(inputs)
-                loss = loss_criterion(outputs, targets)
-                pbar.set_description("%s  " % loss.item())
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-        
-        self.network=network
-        
-
-class simpleDataset(torch.utils.data.Dataset):
-    def __init__(self, X:list[str],
-                 y:list[int]):
-        self.X=X
-        self.y=y
-
-    
-    def __len__(self):
-        return len(self.X)
-    
-    def __getitem__(self, idx):
-
-        x=torch.tensor(self.X[idx])
-        y=torch.tensor(self.y[idx])
-        return x, y

@@ -916,8 +916,6 @@ def grid_walk(n : int ,
 
     return parameters,losses,directions,(reference_point,axis_0,axis_1),Projector(reference_point=reference_point, x=axis_0,y=axis_1)
 
-
-
 def random_dimension_reducer_sampler(n : int ,
                             dataloader : data.DataLoader,
                             Phi : torch.nn.Module,

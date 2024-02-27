@@ -377,6 +377,7 @@ class Trainer:
         self.storage.current_network.add_classes(current_task_classes=self.storage.task_mask,
                                                  old_task_classes=self.storage.seen_classes_mask)
         
+
         self.storage.optimizer=factory.get_optimizer(params=self.storage.current_network.parameters(),
                                                      optimizer=self.optimizer_name,
                                                      lr=self.storage.lr,
