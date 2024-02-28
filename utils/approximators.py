@@ -702,8 +702,8 @@ class BasicMLPAprroximator(nn.Module):
         network=callback_hyperparameters["mlp_model"](input_dim=theta_dim)
         epochs=callback_hyperparameters["epochs"]
         lr=callback_hyperparameters["lr"]
-        # loss_criterion = F.mse_loss
-        loss_criterion = torch.nn.L1Loss()
+        loss_criterion = F.mse_loss
+        # loss_criterion = torch.nn.L1Loss()
         network.train()
         network=network.to('cuda:0')
         loss=0.0

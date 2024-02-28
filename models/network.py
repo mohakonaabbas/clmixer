@@ -157,25 +157,52 @@ class ExpandableNet(nn.Module):
 
     def _add_classes_multi_fc(self, current_task_classes, old_task_classes):
         
-        if self.classifier is not None:
-            if isinstance(self.classifier, torch.nn.DataParallel):
-                weight = copy.deepcopy(self.classifier.module.weight.data)
-            else:
-                weight = copy.deepcopy(self.classifier.weight.data)
+        cond2=self.classifier is not None
+
+        if not cond2 :
+            fc = self._gen_classifier(self.out_dim * len(self.nets), len(current_task_classes))
+            self.classifier = self.maybeToMultipleGpu(fc)
+            return
+        
+        cond1=len(current_task_classes)==len(old_task_classes)
+        if not cond1:
+            fc = self._gen_classifier(self.out_dim * len(self.nets), len(current_task_classes))
+            if cond2:
+                if isinstance(self.classifier, torch.nn.DataParallel):
+                    weight = copy.deepcopy(self.classifier.module.weight.data)
+                else:
+                    weight = copy.deepcopy(self.classifier.weight.data)
+
+                if self.reuse_oldfc:
+                    fc.weight.data[old_task_classes, :weight.shape[1]] = weight[old_task_classes,:]
+            del self.classifier
+            self.classifier = self.maybeToMultipleGpu(fc)
 
 
-        fc = self._gen_classifier(self.out_dim * len(self.nets), len(current_task_classes))
 
 
-        if self.classifier is not None and self.reuse_oldfc:
-            old_weight_shape=weight.shape
-            if fc.weight.data.shape[1]==old_weight_shape[1]:
-                fc.weight.data=weight
-            else:
-                fc.weight.data[old_task_classes, :old_weight_shape[1]] = weight[old_task_classes,:]
+        
+        # if self.classifier is not None:
+        #     if isinstance(self.classifier, torch.nn.DataParallel):
+        #         weight = copy.deepcopy(self.classifier.module.weight.data)
+        #     else:
+        #         weight = copy.deepcopy(self.classifier.weight.data)
+        # else:
+        #     fc = self._gen_classifier(self.out_dim * len(self.nets), len(current_task_classes))
 
-        del self.classifier
-        self.classifier = self.maybeToMultipleGpu(fc)
+        # if len(current_task_classes)!=len(old_task_classes):
+        #     fc = self._gen_classifier(self.out_dim * len(self.nets), len(current_task_classes))
+
+
+        #     if self.classifier is not None and self.reuse_oldfc:
+        #         old_weight_shape=weight.shape
+        #         if fc.weight.data.shape[1]==old_weight_shape[1]:
+        #             fc.weight.data=weight
+        #         else:
+        #             fc.weight.data[old_task_classes, :old_weight_shape[1]] = weight[old_task_classes,:]
+
+        #     del self.classifier
+        #     self.classifier = self.maybeToMultipleGpu(fc)
 
     def _add_classes_multi_backbone(self):
         if self.ntask >= 1:

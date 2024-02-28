@@ -25,7 +25,9 @@ from tqdm import tqdm
 class Projector(nn.Module):
     def __init__(self, 
                  reference_point : torch.Tensor,
-                d_hyperplane : torch.Tensor) -> None:
+                d_hyperplane : torch.Tensor,
+                mean : torch.Tensor,
+                std : torch.Tensor) -> None:
         """
         reference_point : The centered point in full space D
         d_hyperplane : Plane of projection in Dxd space d<<D
@@ -34,6 +36,8 @@ class Projector(nn.Module):
         """
         super().__init__()
         self.reference_point=nn.parameter.Parameter(reference_point,requires_grad=False)
+        self.mean=nn.parameter.Parameter(mean,requires_grad=False)
+        self.std=nn.parameter.Parameter(std,requires_grad=False)
         self.hyperplane=nn.parameter.Parameter(d_hyperplane,requires_grad=False)
         self.d=self.hyperplane.shape[1]
 
@@ -42,7 +46,9 @@ class Projector(nn.Module):
         1. Project a parameter in full space D to small d space
         """
         d_parameter= parameter-self.reference_point
-        projected=torch.dot(d_parameter,self.hyperplane).squeeze()
+        d_parameter-=self.mean
+        d_parameter/=self.std
+        projected=torch.matmul(d_parameter,self.hyperplane).squeeze()
         return projected
     
     def unproject(self,parameter:torch.Tensor):
@@ -50,14 +56,13 @@ class Projector(nn.Module):
         1. Project a parameter in d space D to  D space
         """
 
-        reprojected=torch.dot(parameter.reshape(1,-1),self.hyperplane).squeeze()+self.reference_point
-        reprojected= parameter+self.reference_point
+        reprojected=self.mean+self.std*(torch.matmul(parameter,self.hyperplane.T).squeeze())+self.reference_point
         return reprojected
 
     
 class subspaceClassifierModel(nn.Module):
-    def __init__(self, reference_point:torch.Tensor,
-                 d_hyperplane: torch.Tensor,
+    def __init__(self,
+                 projector: Projector,
                 current_model_checkpoint: nn.Module) -> None:
         """
         reference_point : The centered point in full space D
@@ -67,49 +72,57 @@ class subspaceClassifierModel(nn.Module):
         """
         super().__init__()
         #Get the current model architecture
-        self.reference_point=reference_point
-        self.model_arch=current_model_checkpoint.clone()
+        self.model_arch=copy.deepcopy(current_model_checkpoint).freeze()
         parameter=self.flatten_architecture().reshape(1,-1)
-        d_parameter= parameter-self.reference_point
-        weight_init=torch.dot(d_parameter,d_hyperplane).squeeze()
-
+        
+        self.projector=projector
+        weight_init=self.projector(parameter).squeeze()
         self.weight=nn.parameter.Parameter(weight_init,requires_grad=True)
-        self.hyperplane=nn.parameter.Parameter(d_hyperplane,requires_grad=False)
 
-    def forward(self,x:torch.Tensor):
+
+    def forward(self,input:torch.Tensor):
         """
         1. Rebuild the actual network
         2. Querry the model
         """
 
         #Iinsert the parameters in the model
-        parameter=torch.dot(self.hyperplane,self.weight)+self.reference_point
-        self.rebuild_architecture(parameter=parameter)
-        return self.model_arch(x)
+        
+        parameter=self.projector.unproject(self.weight)
+        shape=(int(parameter.shape[-1]/input.shape[1]),input.shape[1])
+        parameter=parameter.reshape(shape)
+        out = F.linear(input, parameter)
+        # output=torch.matmul(input,parameter.T)
+        # parameter=nn.Parameter(parameter.clone(),requires_grad=True)
+        # self.rebuild_architecture(parameter=parameter)
+        # output=self.model_arch(x)
+        return out
 
     def flatten_architecture(self):
         parameter=[]
         start=0
-        for name,param in self.model_arch.named_parameters():
-            if ("weight" not in name) or ("bias" not in name):
-                continue
-            # parameter+=torch.flatten(param.data).tolist()
-            parameter.append(torch.flatten(param))
-        parameter=torch.cat(parameter)
-        parameter.requires_grad=False
+        with torch.no_grad():
+            for name,param in self.model_arch.named_parameters():
+                if ("weight" in name) or ("bias"  in name):
+                    parameter.append(torch.flatten(param))
+            parameter=torch.cat(parameter)
         return parameter.data
     
     def rebuild_architecture(self,parameter:torch.Tensor):
+        """
+        This function does not allow to backpropagate the gradient
+        We need to manually create the network to run the true forward
+        /!\ DO NOT USE IT
+        """
         start=0
         for name,param in self.model_arch.named_parameters():
-            if ("weight" not in name) or ("bias" not in name):
-                continue
-            shape=param.shape
-            flat_shape=np.prod(param.shape)
-            end=start+flat_shape
-            param.data=parameter[start:start+flat_shape].reshape(shape)
-            param.requires_grad = True
-            start=end
+            if ("weight" in name) or ("bias" in name):
+                shape=param.shape
+                flat_shape=np.prod(param.shape)
+                end=start+flat_shape
+                param.data=parameter[:,start:start+flat_shape].reshape(shape)
+                param.requires_grad = True
+                start=end
 
 
 
@@ -173,12 +186,19 @@ class LossLandscapeOperation(Operation):
         """
 
         pls = PLSRegression(n_components=d)
-        pls.fit(training_trajectory["parameters"].cpu().numpy(),training_trajectory["losses"].cpu().numpy())
+        parameters=torch.concatenate(training_trajectory["parameters"]).cpu().numpy()
+        losses=torch.stack(training_trajectory["losses"]).cpu().numpy()
+        reference_point=training_trajectory["parameters"][-1]
+        pls.fit(parameters-reference_point.cpu().numpy(),losses)
+
         d_hyperplane=pls.x_rotations_
         d_hyperplane=torch.tensor(d_hyperplane,dtype=torch.float32)
-        reference_point=training_trajectory["parameters"][-1]
+        mean=torch.tensor(pls._x_mean,dtype=torch.float32)
+        std=torch.tensor(pls._x_std,dtype=torch.float32)
 
-        projector=Projector(reference_point=reference_point,d_hyperplane=d_hyperplane)
+        
+
+        projector=Projector(reference_point=reference_point,d_hyperplane=d_hyperplane,mean=mean,std=std)
         return projector
 
     def compute_subspace_classifier(self,
@@ -187,8 +207,7 @@ class LossLandscapeOperation(Operation):
         """
         This methods create a model compatible with the plugin
         """
-        classifier= subspaceClassifierModel(reference_point =projector.reference_point,
-                                            d_hyperplane=projector.hyperplane,
+        classifier= subspaceClassifierModel(projector= self.projector,
                                             current_model_checkpoint=current_model)
         
         return classifier
@@ -200,7 +219,7 @@ class LossLandscapeOperation(Operation):
         
         projector=self.projector
         Phi  = copy.deepcopy(self.inputs.current_network)
-        dataloader = self.inputs.dataloader
+        dataloader = self.History["dataloaders"][-1]
         
 
         if projector.d>2:
@@ -212,12 +231,12 @@ class LossLandscapeOperation(Operation):
             #Coarse
             n_steps=int(np.sqrt(n))
             xs = torch.linspace(-coarse_limit, coarse_limit, steps=n_steps).flatten()
-            ys = torch.linspace(-fine_limit, fine_limit, steps=n_steps).flatten()
+            ys = torch.linspace(-coarse_limit, coarse_limit, steps=n_steps).flatten()
             xs,ys=torch.meshgrid(xs,ys)
             directions_c=torch.concatenate((xs.reshape(xs.shape+(1,)),ys.reshape(ys.shape+(1,))),dim=2)
             #Fine
-            xs = torch.linspace(-1, 1, steps=n_steps).flatten()
-            ys = torch.linspace(-1, 1, steps=n_steps).flatten()
+            xs = torch.linspace(-fine_limit, fine_limit, steps=n_steps).flatten()
+            ys = torch.linspace(-fine_limit, fine_limit, steps=n_steps).flatten()
             xs,ys=torch.meshgrid(xs,ys)
             directions_f=torch.concatenate((xs.reshape(xs.shape+(1,)),ys.reshape(ys.shape+(1,))),dim=2)
             directions=torch.concatenate([directions_c,directions_f],dim=0).reshape(-1,2)
@@ -236,9 +255,9 @@ class LossLandscapeOperation(Operation):
             if projector.d==2:
                 fig,ax=plt.subplots()
         
-                SC=ax.scatter(directions.reshape(-1,2)[:,0],directions.reshape(-1,2)[:,1],s=50,c=losses.cpu().numpy()[:,0],cmap="viridis")
+                SC=ax.scatter(directions[:,0],directions[:,1],s=50,c=losses.cpu().numpy()[:,0],cmap="viridis")
                 CB = fig.colorbar(SC, shrink=0.8)
-                exp=self.inputs.exp
+                exp=self.inputs.current_exp
                 plt.savefig(f"./sampling_N_{exp}.png")
 
             results={"parameters":parameters,
@@ -305,9 +324,9 @@ class LossLandscapeOperation(Operation):
 
                 self.projector=self.compute_projector(d=d,
                                        training_trajectory=self.History["initial_trajectory"]).to(self.device)
-                self.classifier=self.compute_subspace_classifier(projector=self.Projector,
+                self.classifier=self.compute_subspace_classifier(projector=self.projector,
                                                                  current_model=self.inputs.current_network).to(self.device)
-                self.inputs.current_network.classifier=self.classifier
+                
             
             
             # Our reccurent task here is to sample datas in the d-space and build an approximator to estimate the data
@@ -336,6 +355,7 @@ class LossLandscapeOperation(Operation):
 
             approximator=approximator.to(self.device)
             self.History["approximators"].append(approximator.eval())
+            self.inputs.current_network.classifier=self.classifier
 
         if self.inputs.stage_name == "before_backward":
 
@@ -353,7 +373,7 @@ class LossLandscapeOperation(Operation):
             
             if len(approximator_models)<1 :
                 loss = F.cross_entropy(logits, targets,reduction=reduction)
-                loss=loss*coefs[self.inputs.current_exp]/coefs[:self.inputs.current_exp+1].sum()
+                # loss=loss*coefs[self.inputs.current_exp]/coefs[:self.inputs.current_exp+1].sum()
                 writer.add_scalar(f"loss_per_task/train_{-1}",loss,counter_writer)
 
             if len(approximator_models)>0 and True:
@@ -361,6 +381,8 @@ class LossLandscapeOperation(Operation):
                 # Get model current classifier
                 # loss=0.0
                 loss = F.cross_entropy(logits, targets,reduction=reduction)
+                loss=loss*10.0*coefs[self.inputs.current_exp]/coefs[:self.inputs.current_exp+1].sum()
+                writer.add_scalar(f"loss_per_task/train_{-1}",loss,counter_writer)
                 weights=self.inputs.current_network.classifier.weight
                 sh=weights.shape
                 weights=torch.reshape(weights,(1,sh[0]))
@@ -380,11 +402,10 @@ class LossLandscapeOperation(Operation):
                     loss_apprx=approximator((weights-mu_x)/sigma_x)
 
                     if np.random.rand()>0.5:
-                        self.History["current_trajectory"].append([weights.clone().detach().cpu().numpy().reshape(1,2),
-                                                                   torch.tensor(loss).clone().detach().cpu().numpy()])
+                        self.History["current_trajectory"]["parameters"].append(weights.clone().detach().cpu().numpy().reshape(1,2))
 
                     for i,li in enumerate(loss_apprx):
-                        loss+=torch.squeeze(li)*coefs[i]/coefs[:self.inputs.current_exp+1].sum()
+                        loss+=torch.squeeze(li)*10*coefs[i]/coefs[:self.inputs.current_exp+1].sum()
                         writer.add_scalar(f"loss_per_task/train_{i}",li,counter_writer)
                 
             loss_coeff=1.0

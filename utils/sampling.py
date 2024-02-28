@@ -123,28 +123,31 @@ def get_parameters_loss(parameter,
 
 
     # Test on the data loader
-    count=0
-    loss=0.0
-    model=model.to("cuda:0")
-    for inputs, targets in dataloader:
-        inputs=inputs.to("cuda:0")
-        targets=targets.to("cuda:0")
-        outputs=model(inputs)
-        loss+=criterion(outputs["logits"],targets)
-        count+=1
+    with torch.no_grad():
+
+        count=0
+        loss=0.0
+        model=model.to("cuda:0")
+        model.eval()
+        for inputs, targets in dataloader:
+            inputs=inputs.to("cuda:0")
+            targets=targets.to("cuda:0")
+            outputs=model(inputs)
+            loss+=criterion(outputs["logits"],targets)
+            count+=1
 
     
     # Update model parameter
     start=0
     for name,param in model.named_parameters():
-            if ("weight" not in name) :
-                continue
-            shape=param.shape
-            flat_shape=np.prod(param.shape)
-            end=start+flat_shape
-            param.data=parameter[start:start+flat_shape].reshape(shape)
+            # if ("weight" not in name) :
+            #     continue
+            # shape=param.shape
+            # flat_shape=np.prod(param.shape)
+            # end=start+flat_shape
+            # param.data=parameter[start:start+flat_shape].reshape(shape)
             param.requires_grad = not requires_grad
-            start=end
+            # start=end
 
 
 

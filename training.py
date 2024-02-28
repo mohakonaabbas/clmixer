@@ -82,7 +82,7 @@ class Trainer:
             #Experimental
             
             
-            for epoch in tqdm(range(self.storage.epochs*(exp+1))):
+            for epoch in tqdm(range(self.storage.epochs*(2*exp+1))):
                 counter = 1  # Counter to compute avg loss
                 loss_accu=0.0
                 self.before_training_epoch(self.plugins)
@@ -114,7 +114,8 @@ class Trainer:
                     if self.early_stopper.early_stop(loss_value):
                         print("Stopping the learning due to early stopping based on train loss")
                         break
-                if (exp>0) and (epoch%5==0):
+                
+                if (exp>0) and (epoch%5==0) and False:
                     self.eval('val', self.val_dataloader, exp, _run, compute_metric=True)
 
             last_ending_epoch+=epoch
