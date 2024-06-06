@@ -739,7 +739,7 @@ class BasicMLPAprroximator(nn.Module):
             for p in self.network.parameters():
                 p.requires_grad = False
 
-        self.plot=simple_plot_utilities((theta_refs-self.data_mean["x"])/self.data_std["x"], 
+        if theta_dim==2: self.plot=simple_plot_utilities((theta_refs-self.data_mean["x"])/self.data_std["x"], 
                                         self.network,projection="2d",
                                         thetas_losses=(theta_refs_raw_losses-self.data_mean["y"])/self.data_std["y"],
                                         mean=self.data_mean,
@@ -970,7 +970,8 @@ class AEMLPIncApproximator(nn.Module):
             for p in self.network.parameters():
                 p.requires_grad = False
 
-        self.plot=plot_utilities(theta_refs, self.network,projection="2d",thetas_losses=theta_refs_raw_losses)
+        if theta_dim==2:
+            self.plot=plot_utilities(theta_refs, self.network,projection="2d",thetas_losses=theta_refs_raw_losses)
         # # Plot the optimization
         # fig = plt.figure(figsize=plt.figaspect(2.))
         # X = np.arange(-5.0, 5.0, 0.5)
@@ -1235,8 +1236,8 @@ def simple_plot_utilities(thetas_2d, model,projection="2d",resolution=15,thetas_
             # SC=ax.scatter(p_thetas[:,0],p_thetas[:,1],s=100,c=colors,cmap="viridis")
             
 
-            levels = np.linspace(np.min(Z_thetas_pred)-1, np.max(Z_thetas_pred)+1, 40)
-            # levels = np.linspace(np.min(Z_thetas_pred), 5.0, 100)
+            # levels = np.linspace(np.min(Z_thetas_pred)-1, np.max(Z_thetas_pred)+1, 40)
+            levels = np.linspace(0.6, 2.0, 100)
             CS = ax.contourf(std["x"][0]*X + mean["x"][0], std["x"][1]*Y + mean["x"][1], Zs[i],levels=levels)
             # make a colorbar for the contour lines
             # SC=ax.scatter(p_thetas[:,0],p_thetas[:,1],s=50,c='r',alpha=0.9,edgecolors="black")

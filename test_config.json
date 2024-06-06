@@ -6,16 +6,16 @@
     "data": {
         "dataset_name": "dummy",
         "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/dummy",
-        "n_experiments": 2 ,
+        "n_experiments": 1 ,
         "backbone": "None",
         "scenario": "cil"
     },
     "seed": 31101996,
     "optimisation": {
         "lr": 0.1,
-        "epochs": 500,
+        "epochs": 200,
         "optimizer": {
-            "type": "adam",
+            "type": "sgd",
             "weight_decay": 0.0005
         },
         "batch_size": 32,
