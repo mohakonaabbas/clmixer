@@ -187,7 +187,7 @@ class Resnet(baseBackbone):
         # else:
         try:
             name=backbone_name
-            self.backbone= torch.hub.load(PYTORCH_VISION_REPO, name)
+            self.backbone= torch.hub.load(PYTORCH_VISION_REPO, name,pretrained = True)
         except :
             raise Exception('The model type does not exist ! ')
         

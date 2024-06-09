@@ -193,7 +193,8 @@ def generate_results_experiments(database_name : str):
 
         result=clean_sacred_dict(document)
         # Append Rows to Empty DataFrame.
-        df = df.append(result, ignore_index = True)
+        # df = df.append(result, ignore_index = True) #Depreciated
+        df = pd.concat([df, pd.DataFrame.from_dict(result, orient='index').T],axis = 0, ignore_index=True)
     return df
 
 
