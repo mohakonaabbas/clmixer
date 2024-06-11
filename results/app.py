@@ -7,17 +7,22 @@ import pandas as pd
 import plotly.express as px
 import plot_api
 import plotly.graph_objects as go
-
+import random
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
 app = Dash(__name__, external_stylesheets=external_stylesheets)
 
 # df1 = plot_api.getAllValidExperiments(databaseName="representation_fixed")
-df = plot_api.getAllValidExperiments(databaseName="experiments_conditions")
+df = plot_api.getAllValidExperiments(databaseName="Frozen")
 # df = pd.concat([df1,df2]).reset_index(drop=True)
 labels=plot_api.getUniqueValues(df)
 
 metrics = ["acc",'mica']
+
+# Function to generate a random color
+def random_color():
+    return f'#{random.randint(0, 0xFFFFFF):06x}'
+
 app.layout = html.Div([
     html.H1("Comparison of Incremental learning setups",style={"text-align":"center"}),
     html.Div([
@@ -107,8 +112,26 @@ def update_graph(dataset,
     # Loop over all the plots
     fig=go.Figure(layout={"title":"Acc"})
     for i in range(len(plots)):
-        fig.add_trace(go.Scatter(x=plots[i]["x"],y=plots[i]["y"],mode=plots[i]["mode"],name=plots[i]["name"]))
 
+        color = random_color() 
+        
+        scatter_data = plots[i][0]
+        box_data = plots[i][1]
+        fig.add_trace(go.Scatter(x=scatter_data["x"],
+                                 y=scatter_data["y"],
+                                 mode=scatter_data["mode"],
+                                 name=scatter_data["name"],
+                                marker=dict(color=color, size=10)))
+        
+        
+        for k in range(len(box_data)):
+            datum=box_data[k]
+            fig.add_trace(go.Box(
+                    x=datum["x"],
+                    y=datum["y"],
+                    marker_color=color,
+                    showlegend=False
+                ) )
     return fig
 
 @callback(
@@ -150,10 +173,20 @@ def update_graph_2(dataset,
     # Loop over all the plots
     fig=go.Figure(layout={"title":"Mica"})
     for i in range(len(plots)):
-        fig.add_trace(go.Scatter(x=plots[i]["x"],
-                                 y=plots[i]["y"],
-                                 mode=plots[i]["mode"],
-                                 name=plots[i]["name"]))
+        scatter_data = plots[i][0]
+        box_data = plots[i][1]
+        fig.add_trace(go.Scatter(x=scatter_data["x"],
+                                 y=scatter_data["y"],
+                                 mode=scatter_data["mode"],
+                                 name=scatter_data["name"]))
+        
+        # for k in range(len(box_data)):
+        #     datum=box_data[k]
+        #     fig.add_trace(go.Box(
+        #             x=datum["x"],
+        #             y=datum["y"],
+        #             marker_color='blue'
+        #         ) )
 
     return fig
 

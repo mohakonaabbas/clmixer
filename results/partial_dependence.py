@@ -3,8 +3,8 @@ import plot_api
 import matplotlib.pyplot as plt
 from sklearn.inspection import PartialDependenceDisplay, partial_dependence
 from time import time
-df1 = plot_api.getAllValidExperiments(databaseName="representation_free")
-preprocessing=plot_api.prepare_inspection_pdp(df1,root_path="/home/mohamedphd/Documents/phd/Datasets/curated/")
+df1 = plot_api.getAllValidExperiments(databaseName="Frozen")
+preprocessing=plot_api.prepare_inspection_pdp(df1,root_path="/home/facto22020/Desktop/PhD/phd_datasets/curated/")
 
 X=preprocessing["x"]
 y=preprocessing["y"]
