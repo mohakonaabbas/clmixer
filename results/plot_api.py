@@ -474,7 +474,10 @@ def numerise_datasets_with_meta_features(dataframe : pd.DataFrame, root_dataset_
         default_meta_features_path=f"{root_dataset_path}/{name}/{default_meta_features_location}/dataset_metafeatures_dict.json"
 
         if not os.path.exists(default_meta_features_path):
-            dataset_features=computeDatasetFeatures(dataset_path=os.path.join(root_dataset_path,name,"data"),backbone_name=backbone_name)
+            try:
+                dataset_features=computeDatasetFeatures(dataset_path=os.path.join(root_dataset_path,name,"data"),backbone_name=backbone_name)
+            except:
+                print(f"{name} metafeatures generations failed")
 
         with open(default_meta_features_path,"r") as f:
             datasetFeatures_dict=json.load(f)
