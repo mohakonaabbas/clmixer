@@ -16,7 +16,7 @@
 
   "optimisation": {
     "lr": 1e-3,
-    "epochs": 1000,
+    "epochs": 100,
     "optimizer": {
       "type": "adam",
       "weight_decay": 0.0005

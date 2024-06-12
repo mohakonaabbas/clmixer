@@ -24,7 +24,7 @@ class RESNET(nn.Module):
         if input_dim != (3,224,224) : 
             raise Exception("Input_dimension should be (3,224,224)")
         
-        self.backbone= torch.hub.load(PYTORCH_VISION_REPO, name)
+        self.backbone= torch.hub.load(PYTORCH_VISION_REPO, name, pretrained = True) #weights='ResNet50_Weights.DEFAULT')
         self.backbone.fc=Identity()
        
 

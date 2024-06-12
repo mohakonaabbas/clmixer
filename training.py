@@ -22,10 +22,10 @@ from sacred import Experiment
 ex=Experiment(base_dir=base_dir)
 
 # MongoDB Observer
-observe=False
+observe=True
 if observe:
     from sacred.observers import MongoObserver
-    ex.observers.append(MongoObserver.create(url='127.0.0.1:27017', db_name='representation_free'))
+    ex.observers.append(MongoObserver.create(url='127.0.0.1:27017', db_name='Frozen'))
 from typing import Union
 
 # Register the json pickle

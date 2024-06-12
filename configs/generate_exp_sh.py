@@ -36,10 +36,10 @@ def checkExperimentsExistence(config_name, collection) -> bool:
         return True
     else: return False
 
-def generate_sh_script(path,savingDatabase=None):
-    base_path="/home/mohamedphd/Documents/phd/"
+def generate_sh_script(path,savingDatabase=None, base_path = "\"/home/facto22020/Desktop/PhD/clmixer/losses/layers.py\""):
+
     files=["#!/usr/bin/env bash\n\n",
-           "cd \"/home/mohamedphd/Documents/phd/clmixer\"\n"]
+           f"cd {base_path}\n"]
     savepath=path+'.sh'
     config_files=os.listdir(path)
 
@@ -65,8 +65,11 @@ def generate_sh_script(path,savingDatabase=None):
         return list(filter(pred, iterable))
     
     for dataset in launch_preference_order.keys():
-        values=first_true(config_files,None,lambda x : dataset in x)
-        temp+=config_files[config_files.index(values[0]):config_files.index(values[-1])+1]
+        try:
+            values=first_true(config_files,None,lambda x : dataset in x)
+            temp+=config_files[config_files.index(values[0]):config_files.index(values[-1])+1]
+        except:
+            print(f"It seems that there is a problem with this dataset : {dataset}")
 
     # sorted_positions=sorted(positions)
     config_files=temp

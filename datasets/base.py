@@ -17,8 +17,13 @@ from tqdm import tqdm
 import functools
 import PIL
 from typing import List,Union
-# from backbones import Dinov2,Resnet, baseBackbone
-from .backbones import Dinov2,Resnet, baseBackbone
+try:
+    from backbones import Dinov2,Resnet, baseBackbone
+except:
+    try:
+        from .backbones import Dinov2,Resnet, baseBackbone
+    except:
+        raise(ImportError)
 
 BACKBONES={'dinov2':Dinov2,'resnet':Resnet,'None':baseBackbone}
 
@@ -80,7 +85,7 @@ class BaseDataset(torch.utils.data.Dataset):
         self.save_embedding=save_embedding
         self.mode=mode
 
-        self.default_embedding_location=f"embeddings/{backbone_name}"
+        self.default_embedding_location=f"embeddings/{backbone_name}/"
 
         
         # BACKBONE LOADING
@@ -355,7 +360,7 @@ class BaseDataset(torch.utils.data.Dataset):
         path=self.activated_files_subset[idx]
 
         # Manage the folder to keep embeddings
-        embedding_path = path.replace('data', self.default_embedding_location)
+        embedding_path = path.replace('data/', self.default_embedding_location)
         
         _,extension=os.path.splitext(path)
         embedding_path=embedding_path.replace(extension,".pt")
@@ -390,7 +395,7 @@ class BaseDataset(torch.utils.data.Dataset):
                 
                 #Save it in the embedding folder
                 lbl=self.Y[self.files.index(path)]
-                torch.save(x.detach().cpu(),embedding_path)
+                # torch.save(x.detach().cpu(),embedding_path)
         
             y=torch.tensor(lbl,dtype=torch.long)
 
@@ -427,7 +432,7 @@ class BaseDataset(torch.utils.data.Dataset):
 
         for i in tqdm(range(0,len(self.files))):
             path=self.files[i]
-            embedding_path=path.replace('data',self.default_embedding_location)
+            embedding_path=path.replace('data/',self.default_embedding_location)
             _,extension=os.path.splitext(path)
             embedding_path=embedding_path.replace(extension,".pt")
 
@@ -469,10 +474,10 @@ class simpleDataset(torch.utils.data.Dataset):
 
         """
         path=self.X[idx]
-        default_embedding_location=f"embeddings/{self.predictor.backbone_name}"
+        default_embedding_location=f"embeddings/{self.predictor.backbone_name}/"
 
         # Manage the folder to keep embeddings
-        embedding_path = path.replace('data', default_embedding_location)
+        embedding_path = path.replace('data/', default_embedding_location)
         
         _,extension=os.path.splitext(path)
         embedding_path=embedding_path.replace(extension,".pt")
@@ -487,7 +492,6 @@ class simpleDataset(torch.utils.data.Dataset):
             x=self.predictor.predict(img)
             #Save it in the embedding folder
             if self.predictor.backbone_name != "None":
-               
                 torch.save(x.detach().cpu(),embedding_path)
         
             # y=torch.tensor(lbl,dtype=torch.long)
@@ -504,10 +508,10 @@ if __name__=="__main__":
     n_splits=5
 
 
-    root_folder_path="/home/mohamedphd/Documents/phd/Datasets/curated/"
+    root_folder_path="/home/facto22020/Desktop/PhD/phd_datasets/curated/"
 
     datasets_names=os.listdir(root_folder_path)
-    backbones=["None",'dinov2_vits14']
+    backbones=["resnet18",'dinov2_vits14']
     modes = ["train"]
 
     for backbone in backbones:
@@ -521,7 +525,9 @@ if __name__=="__main__":
                                     backbone_name=backbone,
                                     mode=mode,
                                     save_embedding=True,
+                                    split_mode= "indus",
                                     n_splits=n_splits)
+
     
                 for input,lbl in dataset:
                     print(input.shape)

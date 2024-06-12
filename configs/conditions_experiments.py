@@ -7,29 +7,29 @@ import json
 import os
 from plugins import plugins_dict
 import copy
+import shutil
 
 def generate_save_conditions_experiments(experiment_name,
                                          representation=['Repr_Fixed','Repr_Free'],
                                          scenarii = ['cil','indus_cil'],):
     dirname=os.path.dirname(os.path.realpath(__file__))
     save_path=os.path.join(dirname,experiment_name)
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
+    # Check if the directory exists before attempting to delete it
+    if os.path.exists(save_path):
+        # Use shutil.rmtree to delete the directory and all its contents
+        shutil.rmtree(save_path)
+        print(f"The directory '{save_path}' has been deleted.")
+    else:
+        print(f"The directory '{save_path}' does not exist.")
+
+    os.makedirs(save_path)
+    print(f"The directory '{save_path}' has been recreated.")
+
+
+
     default_path=os.path.join(os.path.dirname(os.path.realpath(__file__)),"default_skeleton.json")
-
-    # knowledge_incorporation=['CE','L2','Dirichlet CE']
-    # knowledge_retention=["None","KD",'Dynamic Arch',"big buffer"]
-    # Bias_Mitigation=["None","wa","bic","finetuning"]
-    # uncertainty_reduction=["None","dirichlet","conformal"]
-    base_path="/home/mohamedphd/Documents/phd/"
-
-
-    paths=[base_path+"Datasets/curated/kth",
-            base_path+"Datasets/curated/magnetic",
-            base_path+"Datasets/curated/mvtec",
-            base_path+"Datasets/curated/dagm",
-            base_path+"Datasets/curated/easy",
-            base_path+"Datasets/curated/nouvel_op"]
+    base_path="/home/facto22020/Desktop/PhD/phd_datasets/curated/"
+    paths= [os.path.join(base_path,dataset_name) for dataset_name in  os.listdir(base_path)]
 
 
     
@@ -49,12 +49,20 @@ def generate_save_conditions_experiments(experiment_name,
 
 
 
+    # conversion_dict={'Repr_Free':[(free_representation_choices,free_representation_backbones)]
+    #                 ,'Repr_Fixed':[(fixed_representation_choices,fixed_representation_backbones)],
+    #                 'Incorporation': [plugins_dict['CrossEntropyOperation'],plugins_dict['MSEOperation']],
+    #                 'Retention':[None, plugins_dict['KnowledgeDistillationOperation']],
+    #                 'Bias':[None,plugins_dict['FinetuneOperation'],plugins_dict['WeightAlignOperation'] ],
+    #                 'Uncertainty' : [None,plugins_dict['DirichletKLLossOperation'] ]}
+    
+
     conversion_dict={'Repr_Free':[(free_representation_choices,free_representation_backbones)]
-                    ,'Repr_Fixed':[(fixed_representation_choices,fixed_representation_backbones)],
-                    'Incorporation': [plugins_dict['CrossEntropyOperation'],plugins_dict['MSEOperation']],
-                    'Retention':[None, plugins_dict['KnowledgeDistillationOperation']],
-                    'Bias':[None,plugins_dict['FinetuneOperation'],plugins_dict['WeightAlignOperation'] ],
-                    'Uncertainty' : [None,plugins_dict['DirichletKLLossOperation'] ]}
+                ,'Repr_Fixed':[(fixed_representation_choices,fixed_representation_backbones)],
+                'Incorporation': [plugins_dict['CrossEntropyOperation']],
+                'Retention':[None, plugins_dict['KnowledgeDistillationOperation']],
+                'Bias':[None,plugins_dict['FinetuneOperation'],plugins_dict['WeightAlignOperation'] ],
+                'Uncertainty' : [None,plugins_dict['DirichletKLLossOperation'] ]}
 
 
     configs=[]

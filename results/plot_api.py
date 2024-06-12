@@ -92,7 +92,7 @@ def compute_ACC(result_dict : dict) -> dict:
     for key,value in flattened_logs.items():
         acc[key]=np.mean(value)
 
-    return {"acc":acc}
+    return {"acc":acc,"disp_acc":flattened_logs}
 
     raise NotImplemented
 
@@ -134,7 +134,7 @@ def compute_MICA(result_dict : dict)->dict:
     for key,value in flattened_logs.items():
         mica[key]=min(value)
 
-    return {"mica":mica}
+    return {"mica":mica,"disp_mica":flattened_logs}
         
 
 
@@ -193,7 +193,8 @@ def generate_results_experiments(database_name : str):
 
         result=clean_sacred_dict(document)
         # Append Rows to Empty DataFrame.
-        df = df.append(result, ignore_index = True)
+        # df = df.append(result, ignore_index = True) #Depreciated
+        df = pd.concat([df, pd.DataFrame.from_dict(result, orient='index').T],axis = 0, ignore_index=True)
     return df
 
 
@@ -278,12 +279,27 @@ def formatValuesToPlottyLines(experiments : pd.DataFrame,
         metric_value=row[metric]
         name=row["experiment"]
         values=list(metric_value[metric].values())
+        # box_plot_values = list(metric_value["disp_"+metric].values())
         x=np.arange(len(values)).tolist()
         result={"x":x,
            "y": values,
            "mode":'lines+markers',
             "name":name}
-        return result
+        
+        result_box =[]
+        box_plot_values=metric_value["disp_"+metric]
+        # print(box_plot_values)
+        
+        for key,val in box_plot_values.items():
+        
+            result_box.append( {
+                "x": [key]*len(val),
+                "y" : val,
+                "name" : name,
+                "marker_color" :'blue'
+            }
+            )
+        return result,result_box
 
     plots=df.apply(formatter,axis=1)
 
@@ -331,6 +347,7 @@ def crawlDataFolder(entryDirectory : str, reject : List[str]=[]):
 
 
         return foundFilesPaths,foundFilesLabels
+
 def computeDatasetFeatures(dataset_path : str , backbone_name : str = 'dinov2_vits14',force_regeneration=False ) -> dict :
     """
     Args: dataset_path
@@ -341,12 +358,12 @@ def computeDatasetFeatures(dataset_path : str , backbone_name : str = 'dinov2_vi
 
     # Load the files in X and Y
     # Get the embeddings paths
-    default_embedding_location=f"embeddings/{backbone_name}"
-    embedding_path = dataset_path.replace('data', default_embedding_location)
+    default_embedding_location=f"/embeddings/{backbone_name}"
+    embedding_path = dataset_path.replace('/data', default_embedding_location)
 
     # Set the saving folder
-    default_meta_features_location=f"metafeatures/{backbone_name}"
-    default_meta_features_path=dataset_path.replace('data', default_meta_features_location)
+    default_meta_features_location=f"/metafeatures/{backbone_name}"
+    default_meta_features_path=dataset_path.replace('/data', default_meta_features_location)
 
     if not (os.path.exists(default_meta_features_path)):
         os.makedirs(default_meta_features_path)
@@ -455,9 +472,18 @@ def numerise_datasets_with_meta_features(dataframe : pd.DataFrame, root_dataset_
        
         default_meta_features_location=f"metafeatures/{backbone_name}"
         default_meta_features_path=f"{root_dataset_path}/{name}/{default_meta_features_location}/dataset_metafeatures_dict.json"
+
+        if not os.path.exists(default_meta_features_path):
+            try:
+                dataset_features=computeDatasetFeatures(dataset_path=os.path.join(root_dataset_path,name,"data"),backbone_name=backbone_name)
+            except:
+                print(f"{name} metafeatures generations failed")
+
         with open(default_meta_features_path,"r") as f:
             datasetFeatures_dict=json.load(f)
             buffer[name]=datasetFeatures_dict
+
+
 
 
         
