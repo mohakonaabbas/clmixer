@@ -34,7 +34,11 @@ _ = display.figure_.suptitle(
     ),
     fontsize=16,
 )
-
+# # Adjust ylim to ensure absolute scale
+# min_value =0
+# max_value = 1.0
+# for ax in display.axes_.flat:
+#     ax.set_ylim(min_value, max_value)
 plt.show()
 
-plt.show()
+# plt.show()

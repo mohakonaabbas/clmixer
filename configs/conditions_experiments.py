@@ -10,7 +10,7 @@ import copy
 import shutil
 
 def generate_save_conditions_experiments(experiment_name,
-                                         representation=['Repr_Fixed','Repr_Free'],
+                                         representation=['Repr_Fixed','Repr_Free',"Repr_Adapted"],
                                          scenarii = ['cil','indus_cil'],):
     dirname=os.path.dirname(os.path.realpath(__file__))
     save_path=os.path.join(dirname,experiment_name)

@@ -29,12 +29,5 @@
     "classes_simmilary": []
   },
   "plugins": [
-    {
-      "name": "RandomMemoryUpdaterOperation",
-      "hyperparameters": {
-        "cls_budget": 10
-      },
-      "function": "knowledge_retention"
-    }
   ]
 }
