@@ -1,7 +1,8 @@
 {
   "model": {
     "model_type": "mlp",
-    "hidden_size":20
+    "hidden_size":20,
+    "lora": true
   },
   "data": {
     "dataset_name":"mvtec",

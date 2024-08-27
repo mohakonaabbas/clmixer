@@ -1,5 +1,6 @@
 from .base_plugin import Operation
 from torch.nn import functional as F
+import torch
 #============================== LOSSES ===============================#
 # DONE
 class CrossEntropyOperation(Operation):

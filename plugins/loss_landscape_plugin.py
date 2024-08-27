@@ -19,7 +19,7 @@ from sklearn.cross_decomposition import PLSRegression
 import matplotlib.pyplot as plt
 from torch import nn
 from scipy.stats import qmc
-from typing import Dict, List
+from typing import Dict, List,Union
 from tqdm import tqdm
 
 class Projector(nn.Module):
@@ -56,7 +56,7 @@ class Projector(nn.Module):
         1. Project a parameter in d space D to  D space
         """
 
-        reprojected=self.mean+self.std*(torch.matmul(parameter,self.hyperplane.T).squeeze())+self.reference_point
+        reprojected=0*self.mean+self.std*(torch.matmul(parameter,self.hyperplane.T).squeeze())+self.reference_point
         return reprojected
 
     
@@ -167,7 +167,8 @@ class LossLandscapeOperation(Operation):
         self.History={"initial_trajectory":{"parameters":[],"losses":[]},
                       "dataloaders":[],
                       "approximators":[],
-                      "current_trajectory":{"parameters":[],"losses":[]}}
+                      "current_trajectory":{"parameters":[],"losses":[]},
+                      "initial_network_arch":None}
 
 
         #Classifier
@@ -189,12 +190,15 @@ class LossLandscapeOperation(Operation):
         parameters=torch.concatenate(training_trajectory["parameters"]).cpu().numpy()
         losses=torch.stack(training_trajectory["losses"]).cpu().numpy()
         reference_point=training_trajectory["parameters"][-1]
-        pls.fit(parameters-reference_point.cpu().numpy(),losses)
+        b=3
+        pls.fit(parameters[:b,:]-reference_point.cpu().numpy(),losses[:b])
 
         d_hyperplane=pls.x_rotations_
         d_hyperplane=torch.tensor(d_hyperplane,dtype=torch.float32)
         mean=torch.tensor(pls._x_mean,dtype=torch.float32)
         std=torch.tensor(pls._x_std,dtype=torch.float32)
+
+        print(pls.transform(parameters-reference_point.cpu().numpy()))
 
         
 
@@ -215,56 +219,68 @@ class LossLandscapeOperation(Operation):
     def latin_hypercube_sampling(self,
                 n : int =1000,
                 coarse_limit :int =100,
-                fine_limit : int=1):
+                fine_limit : int=1,
+                parameters: Union[torch.Tensor,None] = None,
+                directions: Union[torch.Tensor,None] = None ):
         
+        if parameters is not None:
+            assert directions is not None
+            generate_parameters=False
+        else:
+            generate_parameters=True
+
         projector=self.projector
-        Phi  = copy.deepcopy(self.inputs.current_network)
+        Phi  = copy.deepcopy(self.initial_network_arch)
         dataloader = self.History["dataloaders"][-1]
-        
 
-        if projector.d>2:
-            #Create a grid of points uniformely spaced in d-space
-            sampler=qmc.LatinHypercube(d=D)
-            coeffs=sampler.random(n)
-            directions=torch.tensor(coeffs,dtype=torch.float32)
-        elif projector.d==2:
-            #Coarse
-            n_steps=int(np.sqrt(n))
-            xs = torch.linspace(-coarse_limit, coarse_limit, steps=n_steps).flatten()
-            ys = torch.linspace(-coarse_limit, coarse_limit, steps=n_steps).flatten()
-            xs,ys=torch.meshgrid(xs,ys)
-            directions_c=torch.concatenate((xs.reshape(xs.shape+(1,)),ys.reshape(ys.shape+(1,))),dim=2)
-            #Fine
-            xs = torch.linspace(-fine_limit, fine_limit, steps=n_steps).flatten()
-            ys = torch.linspace(-fine_limit, fine_limit, steps=n_steps).flatten()
-            xs,ys=torch.meshgrid(xs,ys)
-            directions_f=torch.concatenate((xs.reshape(xs.shape+(1,)),ys.reshape(ys.shape+(1,))),dim=2)
-            directions=torch.concatenate([directions_c,directions_f],dim=0).reshape(-1,2)
-
-        
-            parameters=projector.unproject(directions.to(self.device))
-            n_parameters=parameters.shape[0]
-
-            losses=torch.zeros((n_parameters,1))
-
-            with torch.no_grad():
-                for i in tqdm(range(n_parameters)):
-                    loss=sampling.get_parameters_loss(parameter=parameters[i,:],model=Phi,dataloader=dataloader)
-                    losses[i]=loss
+        if generate_parameters:
             
-            if projector.d==2:
-                fig,ax=plt.subplots()
-        
-                SC=ax.scatter(directions[:,0],directions[:,1],s=50,c=losses.cpu().numpy()[:,0],cmap="viridis")
-                CB = fig.colorbar(SC, shrink=0.8)
-                exp=self.inputs.current_exp
-                plt.savefig(f"./sampling_N_{exp}.png")
+            
 
-            results={"parameters":parameters,
-                    "losses":losses,
-                    "projected_parameters":torch.tensor(directions,dtype=torch.float32).reshape(-1,2),
-                    "projector":projector}
-            return results
+            if projector.d>2:
+                #Create a grid of points uniformely spaced in d-space
+                sampler=qmc.LatinHypercube(d=projector.d)
+                coeffs=sampler.random(n)
+                coeffs=qmc.scale(coeffs,[-coarse_limit,-coarse_limit,-coarse_limit],[coarse_limit,coarse_limit,coarse_limit])
+                directions=torch.tensor(coeffs,dtype=torch.float32)
+            elif projector.d==2:
+                #Coarse
+                n_steps=int(np.sqrt(n))
+                xs = torch.linspace(-coarse_limit, coarse_limit, steps=n_steps).flatten()
+                ys = torch.linspace(-coarse_limit, coarse_limit, steps=n_steps).flatten()
+                xs,ys=torch.meshgrid(xs,ys)
+                directions_c=torch.concatenate((xs.reshape(xs.shape+(1,)),ys.reshape(ys.shape+(1,))),dim=2)
+                #Fine
+                xs = torch.linspace(-fine_limit, fine_limit, steps=n_steps).flatten()
+                ys = torch.linspace(-fine_limit, fine_limit, steps=n_steps).flatten()
+                xs,ys=torch.meshgrid(xs,ys)
+                directions_f=torch.concatenate((xs.reshape(xs.shape+(1,)),ys.reshape(ys.shape+(1,))),dim=2)
+                directions=torch.concatenate([directions_c,directions_f],dim=0).reshape(-1,2)
+
+            
+            parameters=projector.unproject(directions.to(self.device))
+        n_parameters=parameters.shape[0]
+
+        losses=torch.zeros((n_parameters,1))
+
+        with torch.no_grad():
+            for i in tqdm(range(n_parameters)):
+                loss=sampling.get_parameters_loss(parameter=parameters[i,:],model=Phi,dataloader=dataloader)
+                losses[i]=loss
+        
+        if projector.d==2:
+            fig,ax=plt.subplots()
+    
+            SC=ax.scatter(directions[:,0],directions[:,1],s=50,c=losses.cpu().numpy()[:,0],cmap="viridis")
+            CB = fig.colorbar(SC, shrink=0.8)
+            exp=self.inputs.current_exp
+            plt.savefig(f"./sampling_N_{exp}.png")
+
+        results={"parameters":parameters,
+                "losses":losses,
+                "projected_parameters":torch.tensor(directions,dtype=torch.float32).reshape(-1,projector.d),
+                "projector":projector}
+        return results
 
     def LossApprox_callback(self,reduction="mean"):
         """
@@ -288,8 +304,20 @@ class LossLandscapeOperation(Operation):
        
         if self.inputs.stage_name == "after_training_exp":
             self.History["dataloaders"].append(copy.deepcopy(self.inputs.dataloader))
+            if self.inputs.current_exp==0:
+                self.initial_network_arch=copy.deepcopy(self.inputs.current_network)
+                n=self.inputs.plugins_storage[self.name]["hyperparameters"]["n"]
+                n=int(n)
+                d=self.inputs.plugins_storage[self.name]["hyperparameters"]["d"]
+                d=int(d)
+
+                self.projector=self.compute_projector(d=d,
+                                       training_trajectory=self.History["initial_trajectory"]).to(self.device)
+                results=self.latin_hypercube_sampling(n=n,coarse_limit=100.0,fine_limit=1.0)
+            
+            
             # Get model current classifier
-            if self.inputs.current_exp>=1:
+            if self.inputs.current_exp>=1 and self.projector.d==2:
                 traj=self.History["current_trajectory"]["parameters"]
                 # losses_bce=list(map(lambda x:x[1].reshape(-1,1),self.inputs.temp_var["trajectory"]))
                 traj=np.concatenate(traj,axis=0)
@@ -303,15 +331,22 @@ class LossLandscapeOperation(Operation):
                     axes[0].scatter(traj[0:10,0],traj[0:10,1],c="b", marker="x", s=20,cmap="viridis")
                     axes[0].scatter(traj[-10:,0],traj[-10:,1],c="g", marker="x", s=10,cmap="viridis")
                     plt.savefig(f"./traj.png")
-                plt.show()
+                # plt.show()
                 traj=self.History["current_trajectory"]["parameters"]
+               
+                n=self.inputs.plugins_storage[self.name]["hyperparameters"]["n"]
+                n=int(n)
+                results=self.latin_hypercube_sampling(n=n,coarse_limit=100.0,fine_limit=1.0,parameters=self.anchors,directions=self.anchors_projected)
+            
             
         if self.inputs.stage_name == "before_training_exp":
             self.device=self.inputs.current_network.device
+            self.initial_network_arch=copy.deepcopy(self.inputs.current_network)
             # Here we compute our approximation of the loss landscape before training
             
             #If we just started , we don't need an approximation
             if self.inputs.current_exp==0:
+                self.initial_network_arch=copy.deepcopy(self.inputs.current_network)
                 return self.inputs
             elif self.inputs.current_exp ==1 : 
                 # We are about to begin the second task.
@@ -327,6 +362,14 @@ class LossLandscapeOperation(Operation):
                 self.classifier=self.compute_subspace_classifier(projector=self.projector,
                                                                  current_model=self.inputs.current_network).to(self.device)
                 
+                n=self.inputs.plugins_storage[self.name]["hyperparameters"]["n"]
+                n=int(n)
+                results=self.latin_hypercube_sampling(n=n,coarse_limit=20.0,fine_limit=1.0)
+                #Backup these sampling
+
+                self.anchors_projected=results["projected_parameters"]
+                self.anchors=results["parameters"]
+                
             
             
             # Our reccurent task here is to sample datas in the d-space and build an approximator to estimate the data
@@ -335,18 +378,18 @@ class LossLandscapeOperation(Operation):
             # 2. Using the sampling, train the approximator 
             # 2. Back up this approximator in the History
             #We need estimated the loss of the last task
-
+            
             n=self.inputs.plugins_storage[self.name]["hyperparameters"]["n"]
             n=int(n)
-            results=self.latin_hypercube_sampling(n=n,coarse_limit=100.0,fine_limit=1.0)
+            results=self.latin_hypercube_sampling(n=n,coarse_limit=20.0,fine_limit=1.0,parameters=self.anchors,directions=self.anchors_projected)
             #Backup these sampling
 
-            anchors_projected=results["projected_parameters"]
+
             anchors_raw_losses=results["losses"]
-            
+
             #Train the approximator
             epochs=self.inputs.plugins_storage[self.name]["hyperparameters"]["epochs"]
-            approximator=approximators.BasicMLPAprroximator(theta_refs=anchors_projected,
+            approximator=approximators.BasicMLPAprroximator(theta_refs=self.anchors_projected,
                                     theta_refs_raw_losses=anchors_raw_losses,
                                     callback_hyperparameters={"epochs":epochs,
                                             "lr":1e-3,
@@ -381,8 +424,9 @@ class LossLandscapeOperation(Operation):
                 # Get model current classifier
                 # loss=0.0
                 loss = F.cross_entropy(logits, targets,reduction=reduction)
-                loss=loss*10.0*coefs[self.inputs.current_exp]/coefs[:self.inputs.current_exp+1].sum()
                 writer.add_scalar(f"loss_per_task/train_{-1}",loss,counter_writer)
+                loss=loss*coefs[self.inputs.current_exp]/coefs[:self.inputs.current_exp+1].sum()
+                
                 weights=self.inputs.current_network.classifier.weight
                 sh=weights.shape
                 weights=torch.reshape(weights,(1,sh[0]))
@@ -401,11 +445,11 @@ class LossLandscapeOperation(Operation):
                     # loss_apprx=approximator(weights,kernel=kernel)
                     loss_apprx=approximator((weights-mu_x)/sigma_x)
 
-                    if np.random.rand()>0.5:
+                    if np.random.rand()>0.5 and self.projector.d==2:
                         self.History["current_trajectory"]["parameters"].append(weights.clone().detach().cpu().numpy().reshape(1,2))
 
                     for i,li in enumerate(loss_apprx):
-                        loss+=torch.squeeze(li)*10*coefs[i]/coefs[:self.inputs.current_exp+1].sum()
+                        loss+=torch.squeeze(li)*coefs[i]/coefs[:self.inputs.current_exp+1].sum()
                         writer.add_scalar(f"loss_per_task/train_{i}",li,counter_writer)
                 
             loss_coeff=1.0

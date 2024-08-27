@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torch import optim
 
-from models import resnet18, dinov2_vitb14,dinov2_vitl14,dinov2_vits14,MLP,Identity
+from models import resnet18, dinov2_vitb14,dinov2_vitl14,dinov2_vits14,MLP,Identity,MLPLora, MLPLoraSubspace,MLPSubspace
 # from my_resnet import resnet_rebuffi
 # from mlp import MLP
 # from mlp_sam import MLP_SAM
@@ -22,6 +22,12 @@ def get_net(net_type, **kwargs):
         return resnet18()
     elif net_type == "mlp":
         return MLP(**kwargs)
+    elif net_type == "mlp_lora":
+        return MLPLora(**kwargs)
+    elif net_type =="mlp_subspace_lora":
+        return MLPLoraSubspace(**kwargs)
+    elif net_type =="mlp_subspace":
+        return MLPSubspace(**kwargs)
     elif net_type == "dinov2_vitb14":
         return dinov2_vitb14()
     elif net_type == "dinov2_vitl14":

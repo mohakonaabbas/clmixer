@@ -1,0 +1,45 @@
+{
+    "model": {
+        "model_type": "identity",
+        "hidden_size": -1
+    },
+    "data": {
+        "dataset_name": "dummy",
+        "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/dummy",
+        "n_experiments": 2 ,
+        "backbone": "None",
+        "scenario": "cil"
+    },
+    "seed": 31101994,
+    "optimisation": {
+        "lr": 0.1,
+        "epochs": 200,
+        "optimizer": {
+            "type": "sgd",
+            "weight_decay": 0.0005
+        },
+        "batch_size": 32,
+        "device": "cuda"
+    },
+    "human_knowledge": {
+        "nbrs_known_classes": 4,
+        "classes_simmilary": []
+    },
+    "plugins": [
+        {
+            "name": "CrossEntropyProjectionOperation",
+            "hyperparameters": {
+              "approximators": [],
+              "current_task_loss_dataset":{
+                "weights": [],
+                "losses":[]
+            },
+              "n":100,
+              "epochs":100,
+              "d":2
+      
+            },
+            "function": "knowledge_retention"
+          }
+    ]
+}

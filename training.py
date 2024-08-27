@@ -44,6 +44,8 @@ class Trainer:
 
     def __init__(self,config_path : Union[str,dict]) -> None:
 
+        
+
         if type(config_path)==str:
             self.config_path=config_path
             with open(self.config_path,'r') as f:
@@ -57,7 +59,9 @@ class Trainer:
         self.epochMetric=metrics.ConfusionMatrix(scope='epoch')
         self.taskMetric=metrics.ConfusionMatrix(scope="task")
         self.writer = SummaryWriter()
-        self.early_stopper= metrics.EarlyStopper(patience=500,min_delta_percentage=0.0001)
+        self.early_stopper= metrics.EarlyStopper(patience=500,min_delta_percentage=0.01)
+
+        print(self.config)
         
         print("Trainer initialized ! ")
     
@@ -81,9 +85,9 @@ class Trainer:
             # cm=[]
             #Experimental
             
-            
-            for epoch in tqdm(range(self.storage.epochs*(2*exp+1))):
-                counter = 1  # Counter to compute avg loss
+            pbar=tqdm(range(self.storage.epochs))
+            for epoch in pbar:
+                counter = 0  # Counter to compute avg loss
                 loss_accu=0.0
                 self.before_training_epoch(self.plugins)
                 
@@ -98,25 +102,31 @@ class Trainer:
                     counter += 1
                     loss_accu+=self.storage.loss
                 
+
+                
                 loss_value=loss_accu/counter if isinstance(loss_accu,float) else loss_accu.item()/counter
+               
                 self.writer.add_scalar("loss/train",loss_value,last_ending_epoch+epoch)
                 self.after_training_epoch(self.plugins)
 
-                # # print("Start Evaluation >>>")
-                # self.eval('val', self.val_dataloader, exp, _run, compute_metric=False)  # On val data
-                # self.writer.add_scalar("loss/val", self.storage.eval_loss, last_ending_epoch + epoch)
+                # print("Start Evaluation >>>")
+                self.eval('val', self.val_dataloader, exp, _run, compute_metric=False)  # On val data
+                self.writer.add_scalar("loss/val", self.storage.eval_loss, last_ending_epoch + epoch)
                 
                 # print("End Evaluation <<<")
                 # if self.early_stopper.early_stop(self.storage.eval_loss):
                 #     print("Stopping the learning due to early stopping based on val loss")
                 #     break
-                if True:
-                    if self.early_stopper.early_stop(loss_value):
-                        print("Stopping the learning due to early stopping based on train loss")
-                        break
+                # if (exp>-1) and (epoch%5==0) and True:
+                self.eval('val', self.val_dataloader, exp, _run, compute_metric=True,print_results=False)
+                pbar.set_description(f" Train Loss {loss_value} --- Eval Loss {self.storage.eval_loss}  ")
+                if self.early_stopper.early_stop(-self.storage.acc):
+                    print("Stopping the learning due to early stopping based on acc")
+                    break
+                self.storage.current_epoch+=1
                 
-                if (exp>0) and (epoch%5==0) and False:
-                    self.eval('val', self.val_dataloader, exp, _run, compute_metric=True)
+                # if (exp>-1) and (epoch%5==0) and True:
+                #     self.eval('val', self.val_dataloader, exp, _run, compute_metric=True)
 
             last_ending_epoch+=epoch
 
@@ -145,14 +155,14 @@ class Trainer:
    
         return self.storage
 
-    def eval(self,type, dataloader,exp,_run,compute_metric=False):
+    def eval(self,type, dataloader,exp,_run,compute_metric=False,print_results=True):
          # Eval the network
         self.storage=self.before_eval(self.plugins)
         self.storage=self.before_eval_exp(self.plugins)
         self.storage=self.before_eval_dataset_adaptation(self.plugins)
         self.storage = self.after_eval_dataset_adaptation(self.plugins)
         
-        counter = 1 # Counter to compute eval loss
+        counter = 0 # Counter to compute eval loss
         eval_loss=0.0
 
         for inputs, targets in dataloader:
@@ -193,8 +203,12 @@ class Trainer:
         accuracies=metrics.Accuracy().compute(self.storage.confusion_matrix[type])
         # print("Confusion Matrix",self.storage.confusion_matrix[type][exp])
         accuracy=accuracies[list(accuracies.keys())[-1]]
+        if self.storage.current_epoch%100==0:
+            print(accuracy)
         accuracy=accuracy[self.storage.seen_classes_mask]
         accuracy=accuracy.tolist()
+
+        self.storage.acc=np.mean(accuracy)
         # cls_name=np.arange(len(self.storage.seen_classes_mask))
         cls_name=np.squeeze(np.argwhere(np.array(self.storage.seen_classes_mask)==True)).tolist()
         # cls_name=np.arange(len(self.storage.seen_classes_mask))
@@ -214,8 +228,9 @@ class Trainer:
         self.taskMetric.reset()
 
         plot_idx=dict(zip(cls_name,accuracy))
-        print(plot_idx)
-        print(self.storage.confusion_matrix[type][exp])
+        if print_results:
+            print(plot_idx)
+            print(self.storage.confusion_matrix[type][exp])
 
         # Compute the other metrics 
 
@@ -253,7 +268,8 @@ class Trainer:
         self.storage.current_network=ExpandableNet(**{"netType":model_type,"input_dim":self.dataloader.dataset.output_shape,
                                                "hidden_dims":[1],
                                                 "out_dimension":self.config["model"]["hidden_size"],
-                                                "device":torch.device("cuda" if torch.cuda.is_available() else "cpu")})
+                                                "device":torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+                                                "lora":self.config["model"]["lora"]})
 
         #Optimisation related
         self.storage.batch_size=self.config["optimisation"]["batch_size"]
