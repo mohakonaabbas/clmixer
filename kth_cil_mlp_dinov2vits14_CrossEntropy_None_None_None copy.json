@@ -6,10 +6,10 @@
     },
     "data": {
         "dataset_name": "kth",
-        "data_path": "/home/mohamedphd/Documents/phd/Datasets/curated/kth",
+        "data_path": "/home/facto22020/Desktop/PhD/phd_datasets/curated/kth",
         "n_experiments": 5,
         "backbone": "dinov2_vits14",
-        "scenario": "cil"
+        "scenario": "indus_cil"
     },
     "seed": 31101994,
     "optimisation": {
@@ -27,13 +27,6 @@
         "classes_simmilary": []
     },
     "plugins": [
-        {
-            "name": "RandomMemoryUpdaterOperation",
-            "hyperparameters": {
-                "cls_budget": 10
-            },
-            "function": "knowledge_retention"
-        },
         {
             "name": "CrossEntropyOperation",
             "hyperparameters": {},

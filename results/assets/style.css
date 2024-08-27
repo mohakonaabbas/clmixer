@@ -17,13 +17,13 @@ label {
 }
 .parameter_div{
     font-family: 'Pacifico',sans-serif;
-    width: 20%;
-    border: solid;
+    width: 100%;
+    /* border: dashed; */
 }
 
 .graph_div{
     font-family: 'Pacifico',sans-serif;
-    width: 80%;
+    width: 90%;
     border: solid;
 }
 .app_div{

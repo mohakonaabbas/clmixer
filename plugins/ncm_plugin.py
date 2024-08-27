@@ -15,7 +15,7 @@ class NCMMemoryUpdaterOperation(Operation):
         self.set_callback(self.ncm_callback)
         self.set_config_template({
       "name": self.__class__.__name__,
-      "hyperparameters": {},
+      "hyperparameters": {"cls_budget": 10},
       "function": "knowledge_retention"
     })
        

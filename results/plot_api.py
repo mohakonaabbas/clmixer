@@ -28,7 +28,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.ensemble import HistGradientBoostingRegressor
 from time import time
 
-from itertools import permutations
+from itertools import permutations,combinations
 def connnect_and_get_collection(database_name,collection_name):
     client=MongoClient("localhost", 27017)
     db=client[database_name]
@@ -40,6 +40,98 @@ def convert_to_numpy(json_pickle_dict :dict ) -> dict:
     array=jsonpickle.decode(json.dumps(json_pickle_dict))
     
     return array.astype(int)
+
+def group_plugins_by_function(config):
+    # Initialize the dictionary to hold grouped plugins
+    grouped_plugins = {}
+
+    # Get the list of plugins from the config
+    plugins = config.get('config', {}).get('plugins', [])
+
+    # Iterate through each plugin
+    for plugin in plugins:
+        # Get the function key from the plugin
+        function = plugin.get('function')
+        # Get the name of the plugin and strip "Operation"
+        name = plugin.get('name').replace('Operation', '')
+
+        # Check if the function key already exists in the grouped_plugins dictionary
+        if function not in grouped_plugins:
+            grouped_plugins[function] = []
+
+        # Append the stripped name to the list corresponding to the function key
+        grouped_plugins[function].append(name)
+
+    return grouped_plugins
+
+
+def is_adapted_frozen_backbone_present(config):
+    # Define the plugin to check
+    adapted_frozen_backbone = {
+        "name": "FreezeNetworkBackboneOperation",
+        "hyperparameters": {},
+        "function": "representation_learning"
+    }
+
+    # Get the list of plugins from the config
+    plugins = config.get('config', {}).get('plugins', [])
+
+    # Iterate through each plugin to check for a match
+    for plugin in plugins:
+        if (
+            plugin.get('name') == adapted_frozen_backbone.get('name') and
+            plugin.get('hyperparameters') == adapted_frozen_backbone.get('hyperparameters') and
+            plugin.get('function') == adapted_frozen_backbone.get('function')
+        ):
+            return True
+    
+    return False
+
+
+def find_cls_budget(config):
+    # Get the list of plugins from the config
+    plugins = config.get('config', {}).get('plugins', [])
+
+    # Iterate through each plugin to check for 'cls_budget' in hyperparameters
+    for plugin in plugins:
+        hyperparameters = plugin.get('hyperparameters', {})
+        if 'cls_budget' in hyperparameters:
+            if plugin["name"] == "RandomMemoryUpdaterOperation":
+                return hyperparameters['cls_budget']
+    
+    return None
+def shorten_name(long_name):
+    # Dictionary for explicit replacements
+    replacements = {
+        'nouvel_op': 'bib',
+        'mvtec': 'mvc',
+        'dagm': 'dag',
+        'kth': 'kth',
+        'magnetic': 'mag',
+        'cil': 'CIL',
+        'induscil': 'DIL',
+        'resnet18': 'res18',
+        'CrossEntropy': 'CE',
+        'KnowledgeDistillation': 'KD',
+        'Finetune': 'FT',
+        'memory': 'mem',
+        'RandomMemoryUpdater': 'RMU',
+        'WeightAlign': 'WA',
+        'DirichletKLLoss': 'DKL',
+        'None': 'None',
+        'dinov2vits14': 'dino'
+    }
+    
+    # Split the long name by underscores
+    parts = long_name.split('_')
+    
+    # Replace parts according to the dictionary
+    shortened_parts = [replacements.get(part, part) for part in parts]
+    
+    # Remove empty parts and join with underscores
+    shortened_name = '_'.join(filter(None, shortened_parts))
+    
+    return shortened_name
 def clean_sacred_dict(document):
     
     result={}
@@ -51,15 +143,32 @@ def clean_sacred_dict(document):
     result["backbone"]=document["config"]["data"]["backbone"]
     result["architecture"]=document["config"]["model"]["model_type"]
 
-    [incorporation,retention,bias,uncertainty]=document["setup"][-4:]
-    result["incorporation"]=incorporation
-    result["retention"]=retention
-    result["bias"]=bias
-    result["uncertainty"]=uncertainty
+    # [incorporation,retention,bias,uncertainty]=document["setup"][-4:]
+    # result["incorporation"]=incorporation
+    # result["retention"]=retention
+    # result["bias"]=bias
+    # result["uncertainty"]=uncertainty
 
     result["acc"]=acc_metric
     result["mica"]=mica_metric
     result["scenario"]=document["config"]["data"]["scenario"]
+
+    plugins = group_plugins_by_function(document)
+    adapted = is_adapted_frozen_backbone_present(document)
+    name = result["experiment"]
+    if adapted :
+        name_split = result["experiment"].split("_")
+        name_split[3] = "ADT"
+        name= "_".join(name_split)
+    name = shorten_name(name)
+    result["experiment"]=name
+
+    result["adapted"] = str(adapted)
+    if document["config"]["data"]["scenario"]=="indus_cil":
+        pass
+
+    result["buffer_size"] = find_cls_budget(document)
+    result.update(plugins)
     
     return result
 
@@ -92,7 +201,7 @@ def compute_ACC(result_dict : dict) -> dict:
     for key,value in flattened_logs.items():
         acc[key]=np.mean(value)
 
-    return {"acc":acc}
+    return {"acc":acc,"disp_acc":flattened_logs}
 
     raise NotImplemented
 
@@ -134,10 +243,8 @@ def compute_MICA(result_dict : dict)->dict:
     for key,value in flattened_logs.items():
         mica[key]=min(value)
 
-    return {"mica":mica}
+    return {"mica":mica,"disp_mica":flattened_logs}
         
-
-
 
 def generate_results_experiments(database_name : str):
     """
@@ -193,8 +300,9 @@ def generate_results_experiments(database_name : str):
 
         result=clean_sacred_dict(document)
         # Append Rows to Empty DataFrame.
-        df = df.append(result, ignore_index = True)
-    return df
+        # df = df.append(result, ignore_index = True) #Depreciated
+        df = pd.concat([df, pd.DataFrame.from_dict(result, orient='index').T],axis = 0, ignore_index=True)
+    return df.fillna("None")
 
 
     # except :
@@ -231,6 +339,14 @@ def filterValidExperiments(dfValidExperiments : pd.DataFrame, filterDict : dict 
         ValueError if no data is left after filtering
     """
 
+    def sort(row,val):
+        if isinstance(row, list):
+            current_filter = val in row
+        else:
+            current_filter = val == row
+        return current_filter
+
+
     filteredValidExperiments=dfValidExperiments.copy()
 
     for key, value in filterDict.items():
@@ -240,8 +356,14 @@ def filterValidExperiments(dfValidExperiments : pd.DataFrame, filterDict : dict 
             value=[value]
         positive_mask=pd.Series(np.zeros(filteredValidExperiments.shape[0])!=0)
         for val in value:
+
+            current_filter = filteredValidExperiments.apply(lambda row: sort(row[key], val), axis=1)
+
             #Concat the result here
-            current_filter=filteredValidExperiments[key]==val
+
+            # current_filter = filteredValidExperiments[key].isin(val)
+
+            # current_filter=filteredValidExperiments[key]==val
             current_filter=current_filter.reset_index(drop=True)
             # print(current_filter.shape)
             positive_mask=positive_mask.add(current_filter)
@@ -278,12 +400,28 @@ def formatValuesToPlottyLines(experiments : pd.DataFrame,
         metric_value=row[metric]
         name=row["experiment"]
         values=list(metric_value[metric].values())
+        # box_plot_values = list(metric_value["disp_"+metric].values())
         x=np.arange(len(values)).tolist()
         result={"x":x,
            "y": values,
            "mode":'lines+markers',
-            "name":name}
-        return result
+            "name":name,
+            "color":row["color"]}
+        
+        result_box =[]
+        box_plot_values=metric_value["disp_"+metric]
+        # print(box_plot_values)
+        
+        for key,val in box_plot_values.items():
+        
+            result_box.append( {
+                "x": [key]*len(val),
+                "y" : val,
+                "name" : name,
+                "color" :row["color"]
+            }
+            )
+        return result,result_box
 
     plots=df.apply(formatter,axis=1)
 
@@ -292,7 +430,6 @@ def formatValuesToPlottyLines(experiments : pd.DataFrame,
     
      
     return plots
-
 
 def getUniqueValues(dfValidExperiments : pd.DataFrame) -> dict:
     """
@@ -304,13 +441,30 @@ def getUniqueValues(dfValidExperiments : pd.DataFrame) -> dict:
     
     """
 
+    def extract_unique_elements_from_column(df, column_name):
+        unique_elements = set()
+        
+        for row in df[column_name]:
+            if isinstance(row,list):
+                unique_elements.update(row)
+            else:
+                unique_elements.add(row)
+
+        return list(unique_elements)
+
     # Get the colums names
+    dfValidExperiments = dfValidExperiments.fillna("None")
     columns=dfValidExperiments.columns.tolist()
     columns.remove("acc")
     columns.remove("mica")
-    items= list(map(lambda x : dfValidExperiments[x].unique().tolist(),columns))
+    columns.remove("experiment")
+    columns.remove("wamica")
+    columns.remove("waacc")
+    items= list(map(lambda x : extract_unique_elements_from_column(dfValidExperiments,x),columns))
 
     items_list=dict(zip(columns,items))
+
+
     return items_list
 
 def crawlDataFolder(entryDirectory : str, reject : List[str]=[]):
@@ -331,6 +485,7 @@ def crawlDataFolder(entryDirectory : str, reject : List[str]=[]):
 
 
         return foundFilesPaths,foundFilesLabels
+
 def computeDatasetFeatures(dataset_path : str , backbone_name : str = 'dinov2_vits14',force_regeneration=False ) -> dict :
     """
     Args: dataset_path
@@ -341,12 +496,12 @@ def computeDatasetFeatures(dataset_path : str , backbone_name : str = 'dinov2_vi
 
     # Load the files in X and Y
     # Get the embeddings paths
-    default_embedding_location=f"embeddings/{backbone_name}"
-    embedding_path = dataset_path.replace('data', default_embedding_location)
+    default_embedding_location=f"/embeddings/{backbone_name}"
+    embedding_path = dataset_path.replace('/data', default_embedding_location)
 
     # Set the saving folder
-    default_meta_features_location=f"metafeatures/{backbone_name}"
-    default_meta_features_path=dataset_path.replace('data', default_meta_features_location)
+    default_meta_features_location=f"/metafeatures/{backbone_name}"
+    default_meta_features_path=dataset_path.replace('/data', default_meta_features_location)
 
     if not (os.path.exists(default_meta_features_path)):
         os.makedirs(default_meta_features_path)
@@ -455,9 +610,18 @@ def numerise_datasets_with_meta_features(dataframe : pd.DataFrame, root_dataset_
        
         default_meta_features_location=f"metafeatures/{backbone_name}"
         default_meta_features_path=f"{root_dataset_path}/{name}/{default_meta_features_location}/dataset_metafeatures_dict.json"
+
+        if not os.path.exists(default_meta_features_path):
+            try:
+                dataset_features=computeDatasetFeatures(dataset_path=os.path.join(root_dataset_path,name,"data"),backbone_name=backbone_name)
+            except:
+                print(f"{name} metafeatures generations failed")
+
         with open(default_meta_features_path,"r") as f:
             datasetFeatures_dict=json.load(f)
             buffer[name]=datasetFeatures_dict
+
+
 
 
         
@@ -489,10 +653,16 @@ def prepare_inspection_pdp(dataframe_ : pd.DataFrame,root_path :str) -> dict :
     result={}
 
     dataframe=numerise_datasets_with_meta_features(dataframe=dataframe_,root_dataset_path=root_path)
-    
+    dataframe = dataframe.explode("bias_mitigation").explode("knowledge_retention").explode("knowledge_incorporation").explode("representation_learning")
+    dataframe = dataframe.reset_index(drop=True)
+    dataframe["buffer_size"][dataframe["buffer_size"]=="None"]=np.nan
+    dataframe["buffer_size"] = dataframe["buffer_size"].fillna(0)
+    dataframe["buffer_size"]=dataframe["buffer_size"].astype(int)
+
+
     columns_to_drop=["experiment","acc","mica"]
     targets_columns=["wamica","waacc"]
-    numerical_features_names=["ch","c2","linear_discr.mean","naive_bayes.mean"]
+    numerical_features_names=["ch","c2","linear_discr.mean","naive_bayes.mean","buffer_size"]
     X=dataframe.drop(columns=columns_to_drop+targets_columns)
     all_columns=X.columns.tolist()
 
@@ -530,22 +700,22 @@ def prepare_inspection_pdp(dataframe_ : pd.DataFrame,root_path :str) -> dict :
 
 
     for y_ in result["y"]:
-        print("Training MLPRegressor...")
-        tic = time()
-        mlp_model = make_pipeline(
-            mlp_preprocessor,
-            MLPRegressor(
-                hidden_layer_sizes=(10, 10),
-                learning_rate_init=0.001,
-                early_stopping=True,
-                random_state=0,
-            ),
-        )
-        mlp_model.fit(X, y_)
-        print(f"done in {time() - tic:.3f}s")
-        print(f"Test R2 score: {mlp_model.score(X, y_):.2f}")
+        # print("Training MLPRegressor...")
+        # tic = time()
+        # mlp_model = make_pipeline(
+        #     mlp_preprocessor,
+        #     MLPRegressor(
+        #         hidden_layer_sizes=(10, 10),
+        #         learning_rate_init=0.001,
+        #         early_stopping=True,
+        #         random_state=0,
+        #     ),
+        # )
+        # mlp_model.fit(X, y_)
+        # print(f"done in {time() - tic:.3f}s")
+        # print(f"Test R2 score: {mlp_model.score(X, y_):.2f}")
 
-        result["models"]["mlp"].append(mlp_model)
+        # result["models"]["mlp"].append(mlp_model)
 
 
 
@@ -573,11 +743,15 @@ def prepare_inspection_pdp(dataframe_ : pd.DataFrame,root_path :str) -> dict :
     "random_state": 0,
     }
     result["common_params"]=common_params
+    combin_params = ['backbone', 'knowledge_retention', 'bias_mitigation']
 
-    permut_categorical=list(permutations(["retention","backbone"], 2))
+    permut_categorical=list(combinations(combin_params, 2))
+    for el in combin_params : permut_categorical.append(el)
+
+    # permut_num = numerical_features_names
     features_info = {
         # features of interest
-        "features": permut_categorical,
+        "features": permut_categorical ,
         # type of partial dependence plot
         "kind": "average",
         # information regarding categorical features

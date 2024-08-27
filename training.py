@@ -22,10 +22,10 @@ from sacred import Experiment
 ex=Experiment(base_dir=base_dir)
 
 # MongoDB Observer
-observe=False
+observe=True
 if observe:
     from sacred.observers import MongoObserver
-    ex.observers.append(MongoObserver.create(url='127.0.0.1:27017', db_name='representation_free'))
+    ex.observers.append(MongoObserver.create(url='127.0.0.1:27017', db_name='Frozen'))
 from typing import Union
 
 # Register the json pickle
@@ -59,9 +59,13 @@ class Trainer:
         self.epochMetric=metrics.ConfusionMatrix(scope='epoch')
         self.taskMetric=metrics.ConfusionMatrix(scope="task")
         self.writer = SummaryWriter()
+<<<<<<< HEAD
         self.early_stopper= metrics.EarlyStopper(patience=500,min_delta_percentage=0.01)
 
         print(self.config)
+=======
+        self.early_stopper= metrics.EarlyStopper(patience=500,min_delta_percentage=0.005)
+>>>>>>> d4f5009aa8d94fcd3fd07973c97869e0c1f122fd
         
         print("Trainer initialized ! ")
     
@@ -76,18 +80,20 @@ class Trainer:
         #Step the dataloader
         last_ending_epoch=0
         for exp in range(self.storage.nbrs_experiments):
-            self.storage.current_exp=exp
-
             self.storage.current_network.train()
             self.storage=self.before_training_exp(self.plugins)
             self.storage=self.before_train_dataset_adaptation(self.plugins)
             self.storage=self.after_train_dataset_adaptation(self.plugins)
             # cm=[]
-            #Experimental
             
+<<<<<<< HEAD
             pbar=tqdm(range(self.storage.epochs))
             for epoch in pbar:
                 counter = 0  # Counter to compute avg loss
+=======
+            for epoch in tqdm(range(self.storage.epochs)):
+                counter = 1  # Counter to compute avg loss
+>>>>>>> d4f5009aa8d94fcd3fd07973c97869e0c1f122fd
                 loss_accu=0.0
                 self.before_training_epoch(self.plugins)
                 
@@ -117,6 +123,7 @@ class Trainer:
                 # if self.early_stopper.early_stop(self.storage.eval_loss):
                 #     print("Stopping the learning due to early stopping based on val loss")
                 #     break
+<<<<<<< HEAD
                 # if (exp>-1) and (epoch%5==0) and True:
                 self.eval('val', self.val_dataloader, exp, _run, compute_metric=True,print_results=False)
                 pbar.set_description(f" Train Loss {loss_value} --- Eval Loss {self.storage.eval_loss}  ")
@@ -128,6 +135,11 @@ class Trainer:
                 # if (exp>-1) and (epoch%5==0) and True:
                 #     self.eval('val', self.val_dataloader, exp, _run, compute_metric=True)
 
+=======
+                if self.early_stopper.early_stop(loss_value):
+                    print("Stopping the learning due to early stopping based on train loss")
+                    break
+>>>>>>> d4f5009aa8d94fcd3fd07973c97869e0c1f122fd
             last_ending_epoch+=epoch
 
                 # self.epochMetric.update({"y":targets,"y_pred":self.storage.logits}) # Compute with the last batch a proxy of epoch Confusion Matrix
@@ -137,7 +149,8 @@ class Trainer:
             
                 #Flush it
                 # self.epochMetric.reset()
-           
+                
+
             self.after_training_exp(self.plugins)
             
             #Eval
@@ -207,16 +220,19 @@ class Trainer:
             print(accuracy)
         accuracy=accuracy[self.storage.seen_classes_mask]
         accuracy=accuracy.tolist()
+<<<<<<< HEAD
 
         self.storage.acc=np.mean(accuracy)
         # cls_name=np.arange(len(self.storage.seen_classes_mask))
         cls_name=np.squeeze(np.argwhere(np.array(self.storage.seen_classes_mask)==True)).tolist()
         # cls_name=np.arange(len(self.storage.seen_classes_mask))
+=======
+        cls_name=np.arange(len(self.storage.seen_classes_mask))
+        cls_name=cls_name[self.storage.seen_classes_mask]
+>>>>>>> d4f5009aa8d94fcd3fd07973c97869e0c1f122fd
 
-        # cls_name=list(map(lambda x : str(x)+"_cls_"+self.storage.dataloader.dataset.label_dict_inverted[x],cls_name))
-        cls_name_=list(map(lambda x : f"Class_{self.storage.dataloader.dataset.label_dict_inverted[x]}",cls_name))
-        plot=dict(zip(cls_name_,accuracy))
-        
+        cls_name=list(map(lambda x : str(x)+"_cls_"+self.storage.dataloader.dataset.label_dict_inverted[x],cls_name))
+        plot=dict(zip(cls_name,accuracy))
 
         self.writer.add_scalars("eval/acc_i/",plot,exp)
 
@@ -227,11 +243,14 @@ class Trainer:
         self.after_eval(self.plugins)
         self.taskMetric.reset()
 
+<<<<<<< HEAD
         plot_idx=dict(zip(cls_name,accuracy))
         if print_results:
             print(plot_idx)
             print(self.storage.confusion_matrix[type][exp])
 
+=======
+>>>>>>> d4f5009aa8d94fcd3fd07973c97869e0c1f122fd
         # Compute the other metrics 
 
 
@@ -394,7 +413,6 @@ class Trainer:
         self.storage.current_network.add_classes(current_task_classes=self.storage.task_mask,
                                                  old_task_classes=self.storage.seen_classes_mask)
         
-
         self.storage.optimizer=factory.get_optimizer(params=self.storage.current_network.parameters(),
                                                      optimizer=self.optimizer_name,
                                                      lr=self.storage.lr,
