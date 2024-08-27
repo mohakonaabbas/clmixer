@@ -1,158 +1,138 @@
-<div align="center">
-    
-# Avalanche: an End-to-End Library for Continual Learning
-**[Avalanche Website](https://avalanche.continualai.org)** | **[Getting Started](https://avalanche.continualai.org/getting-started)** | **[Examples](https://avalanche.continualai.org/examples)** | **[Tutorial](https://avalanche.continualai.org/from-zero-to-hero-tutorial)** | **[API Doc](https://avalanche-api.continualai.org)** | **[Paper](https://arxiv.org/abs/2104.00405)** | **[Twitter](https://twitter.com/AvalancheLib)**
 
-[![unit test](https://github.com/ContinualAI/avalanche/actions/workflows/unit-test.yml/badge.svg)](https://github.com/ContinualAI/avalanche/actions/workflows/unit-test.yml)
-[![syntax checking](https://github.com/ContinualAI/avalanche/actions/workflows/syntax.yml/badge.svg)](https://github.com/ContinualAI/avalanche/actions/workflows/syntax.yml)
-[![docstring coverage](https://github.com/ContinualAI/avalanche-report/blob/main/badge/interrogate-badge.svg)](https://github.com/ContinualAI/avalanche-report/blob/main/docstring_coverage/documentation-coverage.txt)
-[![Coverage Status](https://coveralls.io/repos/github/ContinualAI/avalanche/badge.svg)](https://coveralls.io/github/ContinualAI/avalanche)
+<div align="center">
+
+# CLMixer: A Practical Approach to Combine Building Blocks of a Continual Learning Algorithm
+
 </div>
 
-<p align="center">
-    <img src="https://www.dropbox.com/s/90thp7at72sh9tj/avalanche_logo_with_clai.png?raw=1"/>
-</p>
+**CLMixer** is an innovative continual learning library inspired by the philosophy of [Avalanche](https://avalanche.continualai.org), extending its capabilities to support new taxonomy and industrial applications. CLMixer is designed to make it easy to dynamically create, test, and optimize continual learning methods, even for non-programmers.
 
+---
 
-**Avalanche** is an *end-to-end Continual Learning library* based on **Pytorch**, born within [ContinualAI](https://www.continualai.org/) with the unique goal of providing a shared and collaborative 
-open-source (MIT licensed) codebase for fast prototyping, training and reproducible evaluation of continual learning algorithms.
+## Key Features
 
-> :warning: Looking for **continual learning baselines**? In the [CL-Baseline](https://github.com/ContinualAI/continual-learning-baselines) sibling project based on Avalanche we reproduce seminal papers results you can directly use in **your experiments**!
+- **JSON-Based Parametrization**: Define complex continual learning workflows using simple JSON configuration files.
+- **Dynamic Method Creation**: Automatically generate custom continual learning methods based on JSON configurations.
+- **Automatic Architecture Discovery**: Seamlessly search for and discover the best architectures suited for your datasets.
 
-Avalanche can help Continual Learning researchers in several ways:
+---
 
-- *Write less code, prototype faster & reduce errors*
-- *Improve reproducibility, modularity and reusability*
-- *Increase code efficiency, scalability & portability*
-- *Augment impact and usability of your research products*
+## JSON-Based Parametrization and Dynamic Method Creation
 
-The library is organized into four main modules:
+At the core of CLMixer is a JSON-based system that allows users to define operations, hyperparameters, and even entire methods without writing code. Here's a glimpse of what the JSON configuration looks like:
 
-- [Benchmarks](avalanche/benchmarks): This module maintains a uniform API for data handling: mostly generating a stream of data from one or more datasets. It contains all the major CL benchmarks (similar to what has been done for torchvision).
-- [Training](avalanche/training): This module provides all the necessary utilities concerning model training. This includes simple and efficient ways of implement new continual learning strategies as well as a set of pre-implemented CL baselines and state-of-the-art algorithms you will be able to use for comparison!
-- [Evaluation](avalanche/evaluation): This module provides all the utilities and metrics that can help evaluate a CL algorithm with respect to all the factors we believe to be important for a continually learning system. It also includes advanced logging and plotting features, including native Tensorboard support.
-- [Models](avalanche/models): This module provides utilities to implement model expansion and task-aware models, along with a set of pre-trained models and popular architectures that can be used for your continual learning experiment (similar to what has been done in torchvision.models).
-- [Logging](avalanche/logging): It includes advanced logging and plotting features, including native stdout, file and TensorBoard support (How cool it is to have a complete, interactive dashboard, tracking your experiment metrics in real-time with a single line of code?)
+### Optimization Configuration Example
 
-_Avalanche_ the first experiment of an **End-to-end Library** for reproducible continual learning research & development where you can find benchmarks, algorithms, evaluation metrics and much more, in the same place.
+```json
+{
+    "optimisation": {
+        "lr": 0.001,
+        "epochs": 1000,
+        "optimizer": {
+            "type": "adam",
+            "weight_decay": 0.0005
+        },
+        "batch_size": 32,
+        "device": "cuda"
+    }
+}
+```
 
-Let's make it together :people_holding_hands: a wonderful ride! :balloon:
+### Model and Data Configuration Example
 
-Check out below how you can start using Avalanche! :point_down:
+```json
+{
+    "model": {
+        "model_type": "dinov2_vits14",
+        "hidden_size": 20
+    },
+    "data": {
+        "dataset_name": "kth",
+        "data_path": "path/to/kth",
+        "n_experiments": 5,
+        "backbone": "None",
+        "scenario": "indus_cil"
+    }
+}
+```
 
-Quick Example
-----------------
+### Plugins Configuration Example
+
+```json
+{
+    "plugins": [
+        {
+            "name": "RandomMemoryUpdaterOperation",
+            "hyperparameters": {
+                "cls_budget": 10
+            },
+            "function": "knowledge_retention"
+        },
+        {
+            "name": "CrossEntropyOperation",
+            "hyperparameters": {},
+            "function": "knowledge_incorporation"
+        },
+        {
+            "name": "KnowledgeDistillationOperation",
+            "hyperparameters": {
+                "temperature": 2.0
+            },
+            "function": "knowledge_retention"
+        },
+        {
+            "name": "FinetuneOperation",
+            "hyperparameters": {
+                "finetune_epochs": 100,
+                "finetune_bs": 32,
+                "finetune_lr": 0.001,
+                "cls_budget": 15
+            },
+            "function": "bias_mitigation"
+        }
+    ]
+}
+```
+
+### Internal Plugin Example: KnowledgeDistillationOperation
 
 ```python
-import torch
-from torch.nn import CrossEntropyLoss
-from torch.optim import SGD
+class KnowledgeDistillationOperation(Operation):
+    def __init__(self,
+                entry_point=["before_backward","after_eval_forward"],
+                inputs={},
+                callback=(lambda x:x), 
+                paper_ref="",
+                is_loss=True):
+        super().__init__(entry_point, inputs, callback, paper_ref, is_loss)
 
-from avalanche.benchmarks.classic import PermutedMNIST
-from avalanche.models import SimpleMLP
-from avalanche.training import Naive
-
-
-# Config
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-# model
-model = SimpleMLP(num_classes=10)
-
-# CL Benchmark Creation
-perm_mnist = PermutedMNIST(n_experiences=3)
-train_stream = perm_mnist.train_stream
-test_stream = perm_mnist.test_stream
-
-# Prepare for training & testing
-optimizer = SGD(model.parameters(), lr=0.001, momentum=0.9)
-criterion = CrossEntropyLoss()
-
-# Continual learning strategy
-cl_strategy = Naive(
-    model, optimizer, criterion, train_mb_size=32, train_epochs=2,
-    eval_mb_size=32, device=device)
-
-# train and test loop over the stream of experiences
-results = []
-for train_exp in train_stream:
-    cl_strategy.train(train_exp)
-    results.append(cl_strategy.eval(test_stream))
+        self.set_callback(self.kd_callback)
+        self.set_config_template({
+            "name": self.__class__.__name__,
+            "hyperparameters": {
+                "temperature": 2.0
+            },
+            "function": "knowledge_retention"
+        })
 ```
 
-Current Release
-----------------
+---
 
-Avalanche is a framework in constant development. Thanks to the support of the [ContinualAI](https://www.continualai.org/) community and its active members we are quickly extending its features and improve its usability based on the demands of our research community!
+## Automatic Architecture Discovery
 
-A the moment, Avalanche is in **Beta**. We support [several *Benchmarks*, *Strategies* and *Metrics*](https://avalanche.continualai.org/getting-started/alpha-version), that make it, we believe, the best tool out there for your continual learning research! 💪
+CLMixer's automatic architecture discovery feature enables users to explore various combinations of plugins, models, and optimizers to find the best solution for their dataset. This feature allows for:
 
-**You can install Avalanche by running `pip install avalanche-lib`.**  
-This will install the core Avalanche package. You can install Avalanche with extra packages to enable more functionalities.  
-Look [here](https://avalanche.continualai.org/getting-started/how-to-install) for a more complete guide on the different ways available to install Avalanche.
+- **Rapid Prototyping**: Quickly test different configurations by adjusting JSON parameters.
+- **Automatic Optimization**: Discover optimal architectures tailored to the specific characteristics of your data.
 
-Getting Started
-----------------
+---
 
-We know that learning a new tool may be tough at first. This is why we made Avalanche as easy as possible to learn with a set of resources that will help you along the way.
-For example, you may start with our 5-minutes guide that will let you acquire the basics about Avalanche and how you can use it in your research project:
+## Advantages of CLMixer
 
-- [Getting Started Guide](https://avalanche.continualai.org/getting-started)
+1. **Ease of Use**: By using JSON configurations, users can design and modify continual learning workflows without deep programming knowledge.
+2. **Flexibility**: The dynamic method creation allows for experimenting with various continual learning strategies.
+3. **Scalability**: The architecture discovery feature facilitates scalable and automated optimization, making it suitable for a wide range of applications.
 
-We have also prepared for you a large set of examples & snippets you can plug-in directly into your code and play with:
+---
 
-- [Avalanche Examples](https://avalanche.continualai.org/examples)
-
-Having completed these two sections, you will already feel with superpowers ⚡, this is why we have also created an in-depth tutorial that will cover all the aspects of Avalanche in 
-detail and make you a true Continual Learner! :woman_student:
-
-- [From Zero to Hero Tutorial](https://avalanche.continualai.org/from-zero-to-hero-tutorial)
-
-Cite Avalanche
-----------------
-
-If you use Avalanche in your research project, please remember to cite our JMLR-MLOSS paper [https://jmlr.org/papers/v24/23-0130.html](https://jmlr.org/papers/v24/23-0130.html). This will help us make Avalanche better known in the machine learning community, ultimately making a better tool for everyone:
-
-```
-@article{JMLR:v24:23-0130,
-  author  = {Antonio Carta and Lorenzo Pellegrini and Andrea Cossu and Hamed Hemati and Vincenzo Lomonaco},
-  title   = {Avalanche: A PyTorch Library for Deep Continual Learning},
-  journal = {Journal of Machine Learning Research},
-  year    = {2023},
-  volume  = {24},
-  number  = {363},
-  pages   = {1--6},
-  url     = {http://jmlr.org/papers/v24/23-0130.html}
-}
-```
-
-you can also cite the previous [CLVision @ CVPR2021](https://sites.google.com/view/clvision2021/overview?authuser=0) workshop paper: ["Avalanche: an End-to-End Library for Continual Learning"](https://arxiv.org/abs/2104.00405).
-
-```
-@InProceedings{lomonaco2021avalanche,
-    title={Avalanche: an End-to-End Library for Continual Learning},
-    author={Vincenzo Lomonaco and Lorenzo Pellegrini and Andrea Cossu and Antonio Carta and Gabriele Graffieti and Tyler L. Hayes and Matthias De Lange and Marc Masana and Jary Pomponi and Gido van de Ven and Martin Mundt and Qi She and Keiland Cooper and Jeremy Forest and Eden Belouadah and Simone Calderara and German I. Parisi and Fabio Cuzzolin and Andreas Tolias and Simone Scardapane and Luca Antiga and Subutai Amhad and Adrian Popescu and Christopher Kanan and Joost van de Weijer and Tinne Tuytelaars and Davide Bacciu and Davide Maltoni},
-    booktitle={Proceedings of IEEE Conference on Computer Vision and Pattern Recognition},
-    series={2nd Continual Learning in Computer Vision Workshop},
-    year={2021}
-}
-```
-
-Maintained by ContinualAI Lab
-----------------
-
-*Avalanche* is the flagship open-source collaborative project of [ContinualAI](https://www.continualai.org/): a non-profit research organization and the largest open community on Continual Learning for AI.
-
-Do you have a question, do you want to report an issue or simply ask for a new feature? Check out the [Questions & Issues](https://avalanche.continualai.org/questions-and-issues/ask-your-question) center. Do you want to improve Avalanche yourself? Follow these simple rules on [How to Contribute](https://avalanche.continualai.org/from-zero-to-hero-tutorial/09_contribute-to-avalanche).
-
-The Avalanche project is maintained by the collaborative research team [ContinualAI Lab](https://www.continualai.org/lab/) and used extensively by the Units of the [ContinualAI Research (CLAIR)](https://www.continualai.org/research/) consortium, a research network of the major continual learning stakeholders around the world.
-
-We are always looking for new awesome members willing to join the ContinualAI Lab, so check out our [official website](https://www.continualai.org/lab/) if you want to learn more about us and our activities, or [contact us](https://avalanche.continualai.org/contacts-and-links/the-team#contacts).
-
-Learn more about the [Avalanche team and all the people who made it great](https://avalanche.continualai.org/contacts-and-links/the-team)!
-
-<br>
-<p align="left">
-<a href="https://github.com/ContinualAI/avalanche/graphs/contributors">
- <img width="700" src="https://contrib.rocks/image?repo=ContinualAI/avalanche" />
-</a>
-</p>
+CLMixer brings a practical, user-friendly approach to continual learning, making it accessible to both researchers and industry practitioners. Whether you're looking to build custom learning algorithms or optimize existing ones, CLMixer provides the tools you need to succeed.
